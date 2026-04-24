@@ -311,3 +311,20 @@ def get_po_details(item_code):
         "pending_po": pending_po,
         "in_transit": in_transit
     }
+
+
+# ✅ ---------------- ADD THIS ONLY ----------------
+@frappe.whitelist()
+def get_so_details(item_code):
+
+    return frappe.db.sql("""
+        SELECT
+            soi.parent,
+            soi.qty,
+            soi.delivered_qty,
+            (soi.qty - soi.delivered_qty) as pending
+        FROM `tabSales Order Item` soi
+        WHERE soi.item_code = %s
+        AND soi.docstatus = 1
+        AND (soi.qty - soi.delivered_qty) > 0
+    """, item_code, as_dict=True)
