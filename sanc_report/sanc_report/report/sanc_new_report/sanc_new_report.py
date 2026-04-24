@@ -204,7 +204,7 @@ def get_data(filters):
 
     conditions = ""
     if filters.get("stock_category"):
-        conditions += " AND i.custom__stock_categorization = %(stock_category)s"
+        conditions += " AND i.custom_stock_categorization = %(stock_category)s"
 
     items = frappe.db.sql(f"""
         SELECT item_code
