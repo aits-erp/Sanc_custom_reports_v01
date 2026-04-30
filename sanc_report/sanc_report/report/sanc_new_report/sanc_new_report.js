@@ -264,4 +264,4 @@ frappe.query_reports["SANC New Report"] = {
             }
         });
     }
-};
+}
