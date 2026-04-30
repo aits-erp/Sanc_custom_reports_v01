@@ -304,7 +304,7 @@ def get_data(filters):
             FROM `tabPurchase Order Item`
             WHERE item_code=%s
             AND docstatus=1
-            AND custom__good_in_transit = 1
+            AND custom_good_in_transit = 1
         """, (code,))[0][0] or 0
 
         free_stock = stock - pending_so
@@ -350,7 +350,7 @@ def get_po_details(item_code):
             poi.qty,
             poi.received_qty,
             (poi.qty - poi.received_qty) as pending,
-            poi.custom__good_in_transit
+            poi.custom_good_in_transit
         FROM `tabPurchase Order Item` poi
         JOIN `tabPurchase Order` po ON po.name = poi.parent
         WHERE poi.item_code = %s
@@ -364,7 +364,7 @@ def get_po_details(item_code):
         if d.pending > 0:
             pending_po.append(d)
 
-        if d.custom__good_in_transit:
+        if d.custom_good_in_transit:
             in_transit.append(d)
 
     return {
