@@ -1,10 +1,11 @@
-// frappe.query_reports["SO vs PO REPORT"] = {
+
+// frappe.query_reports["SO vs PO REPORT"] = {  
 
 //     formatter: function (value, row, column, data, default_formatter) {
 
 //         value = default_formatter(value, row, column, data);
 
-//         // ✅ CLICKABLE CHECKBOX (NOW LINKED TO PURCHASE ORDER)
+//         // ✅ CLICKABLE CHECKBOX (ROW LEVEL - PO ITEM)
 //         if (column.fieldname === "in_transit") {
 
 //             let checked = data.in_transit ? "checked" : "";
@@ -20,13 +21,13 @@
 // };
 
 
-// // ✅ GLOBAL FUNCTION (UPDATED)
-// window.update_in_transit = function (po_name, checked) {
+// // ✅ GLOBAL FUNCTION (FIXED)
+// window.update_in_transit = function (poi_name, checked) {
 
 //     frappe.call({
 //         method: "sanc_report.sanc_report.report.so_vs_po_report.so_vs_po_report.update_in_transit",
 //         args: {
-//             po_name: po_name,   // ✅ must match Python
+//             poi_name: poi_name,   // ✅ MATCHES PYTHON
 //             value: checked ? 1 : 0
 //         },
 //         callback: function () {
@@ -34,6 +35,9 @@
 //                 message: "In Transit Updated",
 //                 indicator: "green"
 //             });
+
+//             // ✅ optional but recommended
+//             frappe.query_report.refresh();
 //         }
 //     });
 // };
@@ -45,7 +49,7 @@ frappe.query_reports["SO vs PO REPORT"] = {
 
         value = default_formatter(value, row, column, data);
 
-        // ✅ CLICKABLE CHECKBOX (ROW LEVEL - PO ITEM)
+        // ✅ CHECKBOX
         if (column.fieldname === "in_transit") {
 
             let checked = data.in_transit ? "checked" : "";
@@ -56,28 +60,50 @@ frappe.query_reports["SO vs PO REPORT"] = {
             `;
         }
 
+        // ✅ EDITABLE AWB FIELD
+        if (column.fieldname === "awb_number") {
+
+            let val = data.awb_number || "";
+
+            return `
+                <input type="text" value="${val}"
+                    style="width:150px"
+                    onchange="update_awb('${data.poi_name}', this.value)">
+            `;
+        }
+
         return value;
     }
 };
 
 
-// ✅ GLOBAL FUNCTION (FIXED)
+// ✅ UPDATE CHECKBOX
 window.update_in_transit = function (poi_name, checked) {
 
     frappe.call({
         method: "sanc_report.sanc_report.report.so_vs_po_report.so_vs_po_report.update_in_transit",
         args: {
-            poi_name: poi_name,   // ✅ MATCHES PYTHON
+            poi_name: poi_name,
             value: checked ? 1 : 0
         },
         callback: function () {
-            frappe.show_alert({
-                message: "In Transit Updated",
-                indicator: "green"
-            });
+            frappe.show_alert({ message: "In Transit Updated", indicator: "green" });
+        }
+    });
+};
 
-            // ✅ optional but recommended
-            frappe.query_report.refresh();
+
+// ✅ UPDATE AWB NUMBER
+window.update_awb = function (poi_name, value) {
+
+    frappe.call({
+        method: "sanc_report.sanc_report.report.so_vs_po_report.so_vs_po_report.update_awb_number",
+        args: {
+            poi_name: poi_name,
+            awb_number: value
+        },
+        callback: function () {
+            frappe.show_alert({ message: "AWB Updated", indicator: "green" });
         }
     });
 };

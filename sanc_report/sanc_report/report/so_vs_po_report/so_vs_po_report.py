@@ -39,7 +39,6 @@
 
 #         {"label": "Purchase EDD", "fieldname": "purchase_edd", "fieldtype": "Date", "width": 120},
 
-#         # ✅ CUSTOM FIELDS
 #         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
 #         {"label": "AWB/MAWB Number", "fieldname": "awb_number", "width": 180},
 #     ]
@@ -62,7 +61,6 @@
 #             soi.rate,
 #             soi.amount,
 
-#             # MAX(soi.custom_edd) as sales_edd,
 #             NULL as sales_edd,
 
 #             IFNULL(SUM(sii.qty), 0) as qty_billed,
@@ -73,18 +71,17 @@
 
 #             sup.name as supplier,
 #             sup.supplier_name,
-#             po.name as po,
+#             po.name as po, 
 #             po.transaction_date as po_date,
 
 #             poi.item_code as po_item,
-#             poi.qty as po_qty,  
+#             poi.qty as po_qty,
 #             poi.expected_delivery_date as purchase_edd,
 
-#             -- ✅ YOUR FIELDS
 #             poi.custom_good_in_transit as in_transit,
-#             po.custom_awbmawb_number as awb_number,
+#             poi.custom_awbmawb_number as awb_number,
 
-#             soi.name as soi_name
+#             poi.name as poi_name
 
 #         FROM `tabSales Order` so
 
@@ -121,23 +118,33 @@
 #             so.transaction_date DESC
 #     """, as_dict=1)
 
+
+# # ✅ UPDATE CHECKBOX
 # @frappe.whitelist()
-# def update_in_transit(po_name, value):
+# def update_in_transit(poi_name, value):
 #     frappe.db.set_value(
-#         "Purchase Order",
-#         po_name,
-#         "custom__good_in_transit",
+#         "Purchase Order Item",
+#         poi_name,
+#         "custom_good_in_transit",
 #         value
 #     )
 #     frappe.db.commit()
 
 
+# # ✅ NEW: UPDATE AWB NUMBER
+# @frappe.whitelist()
+# def update_awb_number(poi_name, awb_number):
+#     frappe.db.set_value(
+#         "Purchase Order Item",
+#         poi_name,
+#         "custom_awbmawb_number",
+#         awb_number
+#     )
+#     frappe.db.commit()
 
 
 
 import frappe
-
-
 def execute(filters=None):
     columns = get_columns()
     data = get_data(filters)
@@ -208,18 +215,16 @@ def get_data(filters):
 
             sup.name as supplier,
             sup.supplier_name,
-            po.name as po,
+            po.name as po, 
             po.transaction_date as po_date,
 
             poi.item_code as po_item,
             poi.qty as po_qty,
             poi.expected_delivery_date as purchase_edd,
 
-            -- ✅ FIX: ITEM LEVEL FIELD
             poi.custom_good_in_transit as in_transit,
-            po.custom_awbmawb_number as awb_number,
+            poi.custom_awbmawb_number as awb_number,
 
-            -- ✅ REQUIRED FOR ROW UPDATE
             poi.name as poi_name
 
         FROM `tabSales Order` so
@@ -245,7 +250,7 @@ def get_data(filters):
 
         WHERE
             so.docstatus = 1
-            AND so.status NOT IN ('Cancelled', 'Closed')
+            AND so.status NOT IN ('Cancelled', 'Close', 'Hold')   -- ✅ FINAL FIX
 
         GROUP BY
             soi.name
@@ -258,7 +263,6 @@ def get_data(filters):
     """, as_dict=1)
 
 
-# ✅ UPDATED FUNCTION (ROW LEVEL)
 @frappe.whitelist()
 def update_in_transit(poi_name, value):
     frappe.db.set_value(
@@ -266,5 +270,16 @@ def update_in_transit(poi_name, value):
         poi_name,
         "custom_good_in_transit",
         value
+    )
+    frappe.db.commit()
+
+
+@frappe.whitelist()
+def update_awb_number(poi_name, awb_number):
+    frappe.db.set_value(
+        "Purchase Order Item",
+        poi_name,
+        "custom_awbmawb_number",
+        awb_number
     )
     frappe.db.commit()
