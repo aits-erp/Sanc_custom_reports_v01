@@ -166,7 +166,7 @@ def get_columns():
         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-        {"label": "Sales EDD", "fieldname": "sales_edd", "fieldtype": "Date", "width": 120},
+        {"label": "Sales EDD", "fieldname": "custom_edd", "fieldtype": "Date", "width": 120},
 
         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
         {"label": "Qty Pending", "fieldname": "qty_pending", "fieldtype": "Float", "width": 100},
@@ -181,7 +181,7 @@ def get_columns():
         {"label": "PO Item", "fieldname": "po_item", "width": 120},
         {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 100},
 
-        {"label": "Purchase EDD", "fieldname": "purchase_edd", "fieldtype": "Date", "width": 120},
+        {"label": "Purchase EDD", "fieldname": "expected_delivery_date", "fieldtype": "Date", "width": 120},
 
         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
         {"label": "AWB/MAWB Number", "fieldname": "awb_number", "width": 180},
