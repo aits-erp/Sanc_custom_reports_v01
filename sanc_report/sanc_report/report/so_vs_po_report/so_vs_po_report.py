@@ -166,7 +166,7 @@ def get_columns():
         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-        {"label": "Sales EDD", "fieldname": "custom_edd", "fieldtype": "Date", "width": 120},
+        {"label": "Sales EDD", "fieldname": "custome_edd", "fieldtype": "Date", "width": 120},
 
         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
         {"label": "Qty Pending", "fieldname": "qty_pending", "fieldtype": "Float", "width": 100},
