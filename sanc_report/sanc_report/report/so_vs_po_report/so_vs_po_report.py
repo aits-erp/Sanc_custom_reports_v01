@@ -163,7 +163,7 @@ def get_columns():
         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-        # ✅ FIXED: From Purchase Order Item
+        # ✅ FIXED: FROM SALES ORDER ITEM
         {"label": "Sales EDD", "fieldname": "custom_edd", "fieldtype": "Date", "width": 120},
 
         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
@@ -179,7 +179,7 @@ def get_columns():
         {"label": "PO Item", "fieldname": "po_item", "width": 120},
         {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 100},
 
-        # ✅ FIXED: From Purchase Order Item
+        # ✅ FROM PURCHASE ORDER ITEM
         {"label": "Purchase EDD", "fieldname": "expected_delivery_date", "fieldtype": "Date", "width": 120},
 
         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
@@ -204,9 +204,8 @@ def get_data(filters):
             soi.rate,
             soi.amount,
 
-            -- ✅ FIXED: BOTH FROM PO ITEM
-            poi.custom_edd as custom_edd,
-            poi.expected_delivery_date as expected_delivery_date,
+            -- ✅ CORRECT SOURCE
+            soi.custom_edd as custom_edd,
 
             IFNULL(SUM(sii.qty), 0) as qty_billed,
             (soi.qty - IFNULL(SUM(sii.qty), 0)) as qty_pending,
@@ -221,6 +220,9 @@ def get_data(filters):
 
             poi.item_code as po_item,
             poi.qty as po_qty,
+
+            -- ✅ CORRECT SOURCE
+            poi.expected_delivery_date as expected_delivery_date,
 
             poi.custom_good_in_transit as in_transit,
             poi.custom_awbmawb_number as awb_number,
@@ -264,7 +266,7 @@ def get_data(filters):
 
 
 # -------------------------
-# UPDATE FUNCTIONS
+# UPDATE FUNCTIONS (UNCHANGED)
 # -------------------------
 @frappe.whitelist()
 def update_in_transit(poi_name, value):
