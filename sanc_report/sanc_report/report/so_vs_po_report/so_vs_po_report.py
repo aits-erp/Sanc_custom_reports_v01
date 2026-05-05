@@ -1,6 +1,4 @@
 # import frappe
-
-
 # def execute(filters=None):
 #     columns = get_columns()
 #     data = get_data(filters)
@@ -22,7 +20,7 @@
 #         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
 #         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-#         {"label": "Sales EDD", "fieldname": "sales_edd", "fieldtype": "Date", "width": 120},
+#         {"label": "Sales EDD", "fieldname": "custome_edd", "fieldtype": "Date", "width": 120},
 
 #         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
 #         {"label": "Qty Pending", "fieldname": "qty_pending", "fieldtype": "Float", "width": 100},
@@ -37,7 +35,7 @@
 #         {"label": "PO Item", "fieldname": "po_item", "width": 120},
 #         {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 100},
 
-#         {"label": "Purchase EDD", "fieldname": "purchase_edd", "fieldtype": "Date", "width": 120},
+#         {"label": "Purchase EDD", "fieldname": "expected_delivery_date", "fieldtype": "Date", "width": 120},
 
 #         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
 #         {"label": "AWB/MAWB Number", "fieldname": "awb_number", "width": 180},
@@ -106,7 +104,7 @@
 
 #         WHERE
 #             so.docstatus = 1
-#             AND so.status NOT IN ('Cancelled', 'Closed')
+#             AND so.status NOT IN ('Cancelled', 'Close', 'Hold')   -- ✅ FINAL FIX
 
 #         GROUP BY
 #             soi.name
@@ -119,7 +117,6 @@
 #     """, as_dict=1)
 
 
-# # ✅ UPDATE CHECKBOX
 # @frappe.whitelist()
 # def update_in_transit(poi_name, value):
 #     frappe.db.set_value(
@@ -131,7 +128,6 @@
 #     frappe.db.commit()
 
 
-# # ✅ NEW: UPDATE AWB NUMBER
 # @frappe.whitelist()
 # def update_awb_number(poi_name, awb_number):
 #     frappe.db.set_value(
@@ -145,6 +141,7 @@
 
 
 import frappe
+
 def execute(filters=None):
     columns = get_columns()
     data = get_data(filters)
@@ -166,7 +163,8 @@ def get_columns():
         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-        {"label": "Sales EDD", "fieldname": "custome_edd", "fieldtype": "Date", "width": 120},
+        # ✅ FIXED: From Purchase Order Item
+        {"label": "Sales EDD", "fieldname": "custom_edd", "fieldtype": "Date", "width": 120},
 
         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
         {"label": "Qty Pending", "fieldname": "qty_pending", "fieldtype": "Float", "width": 100},
@@ -181,6 +179,7 @@ def get_columns():
         {"label": "PO Item", "fieldname": "po_item", "width": 120},
         {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 100},
 
+        # ✅ FIXED: From Purchase Order Item
         {"label": "Purchase EDD", "fieldname": "expected_delivery_date", "fieldtype": "Date", "width": 120},
 
         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
@@ -205,7 +204,9 @@ def get_data(filters):
             soi.rate,
             soi.amount,
 
-            NULL as sales_edd,
+            -- ✅ FIXED: BOTH FROM PO ITEM
+            poi.custom_edd as custom_edd,
+            poi.expected_delivery_date as expected_delivery_date,
 
             IFNULL(SUM(sii.qty), 0) as qty_billed,
             (soi.qty - IFNULL(SUM(sii.qty), 0)) as qty_pending,
@@ -215,12 +216,11 @@ def get_data(filters):
 
             sup.name as supplier,
             sup.supplier_name,
-            po.name as po, 
+            po.name as po,
             po.transaction_date as po_date,
 
             poi.item_code as po_item,
             poi.qty as po_qty,
-            poi.expected_delivery_date as purchase_edd,
 
             poi.custom_good_in_transit as in_transit,
             poi.custom_awbmawb_number as awb_number,
@@ -250,7 +250,7 @@ def get_data(filters):
 
         WHERE
             so.docstatus = 1
-            AND so.status NOT IN ('Cancelled', 'Close', 'Hold')   -- ✅ FINAL FIX
+            AND so.status NOT IN ('Cancelled', 'Close', 'Hold')
 
         GROUP BY
             soi.name
@@ -263,6 +263,9 @@ def get_data(filters):
     """, as_dict=1)
 
 
+# -------------------------
+# UPDATE FUNCTIONS
+# -------------------------
 @frappe.whitelist()
 def update_in_transit(poi_name, value):
     frappe.db.set_value(
