@@ -480,7 +480,7 @@ def get_data(filters):
         WHERE i.disabled = 0 {conditions}
     """, filters, as_dict=True)
 
-    # ---- CHANGE 1: Only these two warehouses for SANC STOCK ----
+    # Only these two warehouses for SANC STOCK
     SANC_WAREHOUSES = ("Finished Goods - SANC", "Stores - SANC")
 
     data = []
@@ -492,14 +492,13 @@ def get_data(filters):
         m2 = get_sales(code, m2_start, m1_start)
         m3 = get_sales(code, m3_start, m2_start)
 
-        # ---- CHANGE 1 applied: warehouse filter on Stock Ledger Entry ----
+        # ---- FIXED: Use tabBin for real-time current stock ----
         stock = frappe.db.sql("""
-            SELECT SUM(actual_qty)
-            FROM `tabStock Ledger Entry`
+            SELECT COALESCE(SUM(actual_qty), 0)
+            FROM `tabBin`
             WHERE item_code = %s
-              AND posting_date <= %s
               AND warehouse IN %s
-        """, (code, base_date, SANC_WAREHOUSES))[0][0] or 0
+        """, (code, SANC_WAREHOUSES))[0][0] or 0
 
         pending_so = frappe.db.sql("""
             SELECT SUM(soi.qty - soi.delivered_qty)
@@ -532,7 +531,7 @@ def get_data(filters):
 
         free_stock = stock - pending_so
 
-        # ---- CHANGE 2: Apply negative free stock filter if set ----
+        # Apply negative free stock filter if set
         if filters.get("negative_free_stock") and free_stock >= 0:
             continue
 
