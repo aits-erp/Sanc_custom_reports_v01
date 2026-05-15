@@ -167,7 +167,7 @@ def get_columns():
         {"label": "Sales Order", "fieldname": "so", "fieldtype": "Link", "options": "Sales Order", "width": 150},
         {"label": "Customer Name", "fieldname": "customer_name", "width": 180},
 
-        # ✅ NEW: Certificate column (after Customer Name, before Part Number)
+        # ✅ Certificate from Sales Order (parent)
         {"label": "Certificate", "fieldname": "custom_certificate", "fieldtype": "Select", "options": "\nTC\nCC\nTC/CC", "width": 120},
 
         {"label": "Part Number", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 120},
@@ -195,7 +195,6 @@ def get_columns():
         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
         {"label": "AWB/MAWB Number", "fieldname": "awb_number", "width": 180},
 
-        # ✅ NEW: Remark column (after AWB/MAWB Number, from Purchase Order Item)
         {"label": "Remark", "fieldname": "custom_remark", "width": 200},
     ]
 
@@ -212,8 +211,8 @@ def get_data(filters):
             so.name as so,
             so.customer_name,
 
-            -- ✅ NEW: Certificate from Sales Order Item
-            soi.custom_certificate as custom_certificate,
+            -- ✅ FIXED: from tabSales Order (not soi)
+            so.custom_certificate as custom_certificate,
 
             soi.item_code,
             soi.qty,
@@ -241,7 +240,6 @@ def get_data(filters):
             poi.custom_good_in_transit as in_transit,
             poi.custom_awbmawb_number as awb_number,
 
-            -- ✅ NEW: Remark from Purchase Order Item
             poi.custom_remark as custom_remark,
 
             poi.name as poi_name
@@ -307,7 +305,6 @@ def update_awb_number(poi_name, awb_number):
     frappe.db.commit()
 
 
-# ✅ NEW: Update Remark
 @frappe.whitelist()
 def update_remark(poi_name, remark):
     frappe.db.set_value(
