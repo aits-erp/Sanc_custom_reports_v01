@@ -1,5 +1,7 @@
+
 # import frappe
-# def execute(filters=None):
+
+# def execute(filters=None): 
 #     columns = get_columns()
 #     data = get_data(filters)
 #     return columns, data
@@ -20,7 +22,8 @@
 #         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
 #         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-#         {"label": "Sales EDD", "fieldname": "custome_edd", "fieldtype": "Date", "width": 120},
+#         # ✅ FIXED: FROM SALES ORDER ITEM
+#         {"label": "Sales EDD", "fieldname": "custom_edd", "fieldtype": "Date", "width": 120},
 
 #         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
 #         {"label": "Qty Pending", "fieldname": "qty_pending", "fieldtype": "Float", "width": 100},
@@ -35,6 +38,7 @@
 #         {"label": "PO Item", "fieldname": "po_item", "width": 120},
 #         {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 100},
 
+#         # ✅ FROM PURCHASE ORDER ITEM
 #         {"label": "Purchase EDD", "fieldname": "expected_delivery_date", "fieldtype": "Date", "width": 120},
 
 #         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
@@ -59,7 +63,8 @@
 #             soi.rate,
 #             soi.amount,
 
-#             NULL as sales_edd,
+#             -- ✅ CORRECT SOURCE
+#             soi.custom_edd as custom_edd,
 
 #             IFNULL(SUM(sii.qty), 0) as qty_billed,
 #             (soi.qty - IFNULL(SUM(sii.qty), 0)) as qty_pending,
@@ -69,12 +74,14 @@
 
 #             sup.name as supplier,
 #             sup.supplier_name,
-#             po.name as po, 
+#             po.name as po,
 #             po.transaction_date as po_date,
 
 #             poi.item_code as po_item,
 #             poi.qty as po_qty,
-#             poi.expected_delivery_date as purchase_edd,
+
+#             -- ✅ CORRECT SOURCE
+#             poi.expected_delivery_date as expected_delivery_date,
 
 #             poi.custom_good_in_transit as in_transit,
 #             poi.custom_awbmawb_number as awb_number,
@@ -104,7 +111,7 @@
 
 #         WHERE
 #             so.docstatus = 1
-#             AND so.status NOT IN ('Cancelled', 'Close', 'Hold')   -- ✅ FINAL FIX
+#             AND so.status NOT IN ('Cancelled', 'Close', 'Hold')
 
 #         GROUP BY
 #             soi.name
@@ -117,6 +124,9 @@
 #     """, as_dict=1)
 
 
+# # -------------------------
+# # UPDATE FUNCTIONS (UNCHANGED)
+# # -------------------------
 # @frappe.whitelist()
 # def update_in_transit(poi_name, value):
 #     frappe.db.set_value(
@@ -139,7 +149,6 @@
 #     frappe.db.commit()
 
 
-
 import frappe
 
 def execute(filters=None): 
@@ -158,12 +167,14 @@ def get_columns():
         {"label": "Sales Order", "fieldname": "so", "fieldtype": "Link", "options": "Sales Order", "width": 150},
         {"label": "Customer Name", "fieldname": "customer_name", "width": 180},
 
+        # ✅ NEW: Certificate column (after Customer Name, before Part Number)
+        {"label": "Certificate", "fieldname": "custom_certificate", "fieldtype": "Select", "options": "\nTC\nCC\nTC/CC", "width": 120},
+
         {"label": "Part Number", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 120},
         {"label": "Qty", "fieldname": "qty", "fieldtype": "Float", "width": 80},
         {"label": "Unit Price", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
         {"label": "Total Price", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
 
-        # ✅ FIXED: FROM SALES ORDER ITEM
         {"label": "Sales EDD", "fieldname": "custom_edd", "fieldtype": "Date", "width": 120},
 
         {"label": "Qty Billed", "fieldname": "qty_billed", "fieldtype": "Float", "width": 100},
@@ -179,11 +190,13 @@ def get_columns():
         {"label": "PO Item", "fieldname": "po_item", "width": 120},
         {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 100},
 
-        # ✅ FROM PURCHASE ORDER ITEM
         {"label": "Purchase EDD", "fieldname": "expected_delivery_date", "fieldtype": "Date", "width": 120},
 
         {"label": "In Transit", "fieldname": "in_transit", "fieldtype": "Check", "width": 100},
         {"label": "AWB/MAWB Number", "fieldname": "awb_number", "width": 180},
+
+        # ✅ NEW: Remark column (after AWB/MAWB Number, from Purchase Order Item)
+        {"label": "Remark", "fieldname": "custom_remark", "width": 200},
     ]
 
 
@@ -199,12 +212,14 @@ def get_data(filters):
             so.name as so,
             so.customer_name,
 
+            -- ✅ NEW: Certificate from Sales Order Item
+            soi.custom_certificate as custom_certificate,
+
             soi.item_code,
             soi.qty,
             soi.rate,
             soi.amount,
 
-            -- ✅ CORRECT SOURCE
             soi.custom_edd as custom_edd,
 
             IFNULL(SUM(sii.qty), 0) as qty_billed,
@@ -221,11 +236,13 @@ def get_data(filters):
             poi.item_code as po_item,
             poi.qty as po_qty,
 
-            -- ✅ CORRECT SOURCE
             poi.expected_delivery_date as expected_delivery_date,
 
             poi.custom_good_in_transit as in_transit,
             poi.custom_awbmawb_number as awb_number,
+
+            -- ✅ NEW: Remark from Purchase Order Item
+            poi.custom_remark as custom_remark,
 
             poi.name as poi_name
 
@@ -266,7 +283,7 @@ def get_data(filters):
 
 
 # -------------------------
-# UPDATE FUNCTIONS (UNCHANGED)
+# UPDATE FUNCTIONS
 # -------------------------
 @frappe.whitelist()
 def update_in_transit(poi_name, value):
@@ -286,5 +303,17 @@ def update_awb_number(poi_name, awb_number):
         poi_name,
         "custom_awbmawb_number",
         awb_number
+    )
+    frappe.db.commit()
+
+
+# ✅ NEW: Update Remark
+@frappe.whitelist()
+def update_remark(poi_name, remark):
+    frappe.db.set_value(
+        "Purchase Order Item",
+        poi_name,
+        "custom_remark",
+        remark
     )
     frappe.db.commit()
