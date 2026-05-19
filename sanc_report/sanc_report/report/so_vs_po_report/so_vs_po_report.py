@@ -159,7 +159,7 @@ def execute(filters=None):
 
 def get_columns():
     return [
-        {"label": "Sel", "fieldname": "idx", "width": 50},
+        # {"label": "Sel", "fieldname": "idx", "width": 50},
 
         {"label": "Date", "fieldname": "date", "fieldtype": "Date", "width": 100},
         {"label": "Customer PO Number", "fieldname": "po_no", "width": 150},
