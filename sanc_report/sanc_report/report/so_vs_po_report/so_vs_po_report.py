@@ -586,7 +586,6 @@ HAVING
     OR
     (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) > 0
 )
-
 ORDER BY so.transaction_date DESC, so.name, soi.idx
 
     """.format(conditions=conditions), filters, as_dict=1)
