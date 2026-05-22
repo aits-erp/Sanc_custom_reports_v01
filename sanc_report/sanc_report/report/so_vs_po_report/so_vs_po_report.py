@@ -281,10 +281,10 @@
 #             soi.custom_edd AS custom_edd,
 
 #             -- Qty Billed: sum from Sales Invoice Items
-#             IFNULL(SUM(sii.qty), 0) AS qty_billed,
+#            soi.billed_qty AS qty_billed,
 
 #             -- Qty Pending: ordered qty minus billed qty
-#             (soi.qty - IFNULL(SUM(sii.qty), 0)) AS qty_pending,
+#             (soi.qty - soi.billed_qty) AS qty_pending,
 
 #             -- Amount Billed: billed_amt * conversion_rate (same as Sales Order Analysis standard report)
 #             (soi.billed_amt * IFNULL(so.conversion_rate, 1)) AS amount_billed,
@@ -530,17 +530,13 @@ def get_data(filters):
             soi.base_amount                                             AS amount,
             soi.custom_edd,
 
-            -- ── Qty Billed: sum of linked SI item qty (same as standard report) ──
-            IFNULL(SUM(sii.qty), 0)                                     AS qty_billed,
+soi.billed_qty AS qty_billed,
 
-            -- ── Qty Pending: ordered minus billed ──
-            (soi.qty - IFNULL(SUM(sii.qty), 0))                        AS qty_pending,
+(soi.qty - soi.billed_qty) AS qty_pending,
 
-            -- ── Amount Billed: billed_amt * conversion_rate (standard SOA formula) ──
-            (soi.billed_amt * IFNULL(so.conversion_rate, 1))           AS amount_billed,
+(soi.billed_amt * IFNULL(so.conversion_rate, 1)) AS amount_billed,
 
-            -- ── Amount Pending: base_amount minus amount_billed (standard SOA formula) ──
-            (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) AS amount_pending,
+(soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) AS amount_pending,
 
             sup.name                                                    AS supplier,
             sup.supplier_name,
@@ -563,8 +559,8 @@ def get_data(filters):
 
         -- ── PO item matched by SO name + item code ──
         LEFT JOIN `tabPurchase Order Item` poi
-            ON poi.sales_order = so.name
-            AND poi.item_code  = soi.item_code
+    ON poi.sales_order = so.name
+    AND poi.sales_order_item = soi.name
 
         -- ── PO header — only submitted ──
         LEFT JOIN `tabPurchase Order` po
@@ -576,10 +572,7 @@ def get_data(filters):
 
         -- ── SI items joined on so_detail (soi.name) — same as standard report ──
         -- This avoids double-counting when multiple invoice lines exist
-        LEFT JOIN `tabSales Invoice Item` sii
-            ON sii.so_detail  = soi.name
-            AND sii.docstatus = 1
-
+        
        WHERE
     so.docstatus = 1
     AND so.status NOT IN ('Cancelled', 'Closed', 'On Hold')
@@ -589,7 +582,7 @@ GROUP BY soi.name
 
 HAVING
 (
-    (soi.qty - soi.delivered_qty) > 0
+    (soi.qty - soi.billed_qty) > 0
     OR
     (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) > 0
 )
