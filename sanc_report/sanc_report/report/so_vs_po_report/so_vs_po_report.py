@@ -493,12 +493,12 @@ def get_conditions(filters):
         conditions += " AND so.company = %(company)s"
 
     if filters.get("sales_order") and len(filters.get("sales_order")) > 0:
-    conditions += " AND so.name IN %(sales_order)s"
+        conditions += " AND so.name IN %(sales_order)s"
 
     if filters.get("status") and len(filters.get("status")) > 0:
-    conditions += " AND so.status IN %(status)s"
+        conditions += " AND so.status IN %(status)s"
     if filters.get("purchase_order") and len(filters.get("purchase_order")) > 0:
-    conditions += " AND po.name IN %(purchase_order)s"
+        conditions += " AND po.name IN %(purchase_order)s"
     return conditions
 
 
@@ -556,8 +556,8 @@ soi.delivered_qty AS qty_billed,
 
         -- ── PO item matched by SO name + item code ──
         LEFT JOIN `tabPurchase Order Item` poi
-    ON poi.sales_order = so.name
-    AND poi.sales_order_item = soi.name
+             ON poi.sales_order = so.name
+            AND poi.sales_order_item = soi.name
 
         -- ── PO header — only submitted ──
         LEFT JOIN `tabPurchase Order` po
@@ -579,9 +579,9 @@ GROUP BY soi.name
 
 HAVING
 (
-    soi.delivered_qty AS qty_billed,
+    (soi.qty - IFNULL(soi.delivered_qty, 0)) > 0
     OR
-    (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) > 0
+    (soi.base_amount - (IFNULL(soi.billed_amt, 0) * IFNULL(so.conversion_rate, 1))) > 0
 )
 ORDER BY so.transaction_date DESC, so.name, soi.idx
 
