@@ -531,9 +531,9 @@ def get_data(filters):
 soi.delivered_qty AS qty_billed,
 
 (soi.qty - IFNULL(soi.delivered_qty, 0)) AS qty_pending,
-(IFNULL(soi.billed_amt, 0) * IFNULL(so.conversion_rate, 1)) AS amount_billed,
+0 AS amount_billed,
 
-(soi.base_amount - (IFNULL(soi.billed_amt, 0) * IFNULL(so.conversion_rate, 1))) AS amount_pending,
+soi.base_amount AS amount_pending,
 
             sup.name                                                    AS supplier,
             sup.supplier_name,
@@ -581,7 +581,7 @@ HAVING
 (
     (soi.qty - IFNULL(soi.delivered_qty, 0)) > 0
     OR
-    (soi.base_amount - (IFNULL(soi.billed_amt, 0) * IFNULL(so.conversion_rate, 1))) > 0
+    soi.base_amount > 0
 )
 ORDER BY so.transaction_date DESC, so.name, soi.idx
 
