@@ -492,15 +492,13 @@ def get_conditions(filters):
     if filters.get("company"):
         conditions += " AND so.company = %(company)s"
 
-    if filters.get("sales_order"):
-        conditions += " AND so.name IN %(sales_order)s"
+    if filters.get("sales_order") and len(filters.get("sales_order")) > 0:
+    conditions += " AND so.name IN %(sales_order)s"
 
-    if filters.get("status"):
-        conditions += " AND so.status IN %(status)s"
-
-    if filters.get("purchase_order"):
-        conditions += " AND po.name IN %(purchase_order)s"
-
+    if filters.get("status") and len(filters.get("status")) > 0:
+    conditions += " AND so.status IN %(status)s"
+    if filters.get("purchase_order") and len(filters.get("purchase_order")) > 0:
+    conditions += " AND po.name IN %(purchase_order)s"
     return conditions
 
 
@@ -530,13 +528,12 @@ def get_data(filters):
             soi.base_amount                                             AS amount,
             soi.custom_edd,
 
-soi.billed_qty AS qty_billed,
+soi.delivered_qty AS qty_billed,
 
-(soi.qty - soi.billed_qty) AS qty_pending,
+(soi.qty - IFNULL(soi.delivered_qty, 0)) AS qty_pending,
+(IFNULL(soi.billed_amt, 0) * IFNULL(so.conversion_rate, 1)) AS amount_billed,
 
-(soi.billed_amt * IFNULL(so.conversion_rate, 1)) AS amount_billed,
-
-(soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) AS amount_pending,
+(soi.base_amount - (IFNULL(soi.billed_amt, 0) * IFNULL(so.conversion_rate, 1))) AS amount_pending,
 
             sup.name                                                    AS supplier,
             sup.supplier_name,
@@ -575,14 +572,14 @@ soi.billed_qty AS qty_billed,
         
        WHERE
     so.docstatus = 1
-    AND so.status NOT IN ('Cancelled', 'Closed', 'On Hold')
+    AND so.status NOT IN ('Cancelled', 'Closed')
     {conditions}
 
 GROUP BY soi.name
 
 HAVING
 (
-    (soi.qty - soi.billed_qty) > 0
+    soi.delivered_qty AS qty_billed,
     OR
     (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) > 0
 )
