@@ -70,8 +70,8 @@
 
 # #             soi.custom_edd as custom_edd,
 
-# #             IFNULL(SUM(sii.qty), 0) as qty_billed,
-# #             (soi.qty - IFNULL(SUM(sii.qty), 0)) as qty_pending,
+# #             soi.delivered_qty AS qty_billed,
+# #             (soi.qty - soi.delivered_qty) AS qty_pending,
 
 # #             IFNULL(SUM(sii.amount), 0) as amount_billed,
 # #             (soi.amount - IFNULL(SUM(sii.amount), 0)) as amount_pending,
@@ -580,15 +580,21 @@ def get_data(filters):
             ON sii.so_detail  = soi.name
             AND sii.docstatus = 1
 
-        WHERE
-            so.docstatus = 1
-            AND so.status NOT IN ('Cancelled', 'Closed', 'On Hold')
-            {conditions}
+       WHERE
+    so.docstatus = 1
+    AND so.status NOT IN ('Cancelled', 'Closed', 'On Hold')
+    {conditions}
 
-        -- ── Group by soi.name — same as standard Sales Order Analysis ──
-        GROUP BY soi.name
+GROUP BY soi.name
 
-        ORDER BY so.transaction_date DESC, so.name, soi.idx
+HAVING
+(
+    (soi.qty - soi.delivered_qty) > 0
+    OR
+    (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) > 0
+)
+
+ORDER BY so.transaction_date DESC, so.name, soi.idx
 
     """.format(conditions=conditions), filters, as_dict=1)
 
