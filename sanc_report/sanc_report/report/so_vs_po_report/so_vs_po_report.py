@@ -592,10 +592,7 @@ def get_data(filters):
     {conditions}
 
 GROUP BY soi.name
-
-HAVING
-    (soi.qty - IFNULL(soi.delivered_qty, 0)) > 0
-
+HAVING qty_pending > 0
 ORDER BY so.transaction_date DESC, so.name, soi.idx
 
     """.format(conditions=conditions), filters, as_dict=1)
