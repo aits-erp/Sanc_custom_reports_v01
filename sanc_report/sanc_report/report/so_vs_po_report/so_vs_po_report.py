@@ -646,7 +646,7 @@ def update_awb_number(poi_name, awb_number):
     frappe.db.set_value("Purchase Order Item", poi_name, "custom_awbmawb_number", awb_number)
     frappe.db.commit()
 
-
+# hi
 @frappe.whitelist()
 def update_remark(poi_name, remark):
     frappe.db.set_value("Purchase Order Item", poi_name, "custom_remark", remark)
