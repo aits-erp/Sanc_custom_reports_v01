@@ -439,31 +439,21 @@
 import frappe
 
 
+# def execute(filters=None):
+#     columns = get_columns()
+#     data = get_data(filters)
+
+#     # if data:
+#     #     totals = get_totals_row(data)
+#     #     data.append(totals)
+
+#     # return columns, data
 def execute(filters=None):
     columns = get_columns()
     data = get_data(filters)
 
-    # if data:
-    #     totals = get_totals_row(data)
-    #     data.append(totals)
-
-    # return columns, data
-    report_summary = []
-
-    if data:
-        totals = get_totals_row(data)
-
-        report_summary = [
-            {"label": "Total Qty", "value": totals["qty"], "indicator": "Blue"},
-            {"label": "Total Amount", "value": totals["amount"], "indicator": "Blue"},
-            {"label": "Delivered Qty", "value": totals["qty_billed"], "indicator": "Green"},
-            {"label": "Qty Pending", "value": totals["qty_pending"], "indicator": "Orange"},
-            {"label": "Amount Billed", "value": totals["amount_billed"], "indicator": "Green"},
-            {"label": "Amount Pending", "value": totals["amount_pending"], "indicator": "Red"},
-            {"label": "PO Qty", "value": totals["po_qty"], "indicator": "Blue"},
-        ]
-
-    return columns, data, None, None, report_summary
+    return columns, data
+    
 
 def get_columns():
     return [
@@ -588,11 +578,11 @@ def get_data(filters):
         
        WHERE
     so.docstatus = 1
-    AND so.status NOT IN ('Cancelled', 'Closed')
+    AND so.status NOT IN ('Cancelled', 'Closed','Completed')
     {conditions}
 
 GROUP BY soi.name
-HAVING qty_pending > 0
+
 ORDER BY so.transaction_date DESC, so.name, soi.idx
 
     """.format(conditions=conditions), filters, as_dict=1)
