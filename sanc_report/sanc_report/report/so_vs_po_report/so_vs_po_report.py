@@ -443,12 +443,27 @@ def execute(filters=None):
     columns = get_columns()
     data = get_data(filters)
 
+    # if data:
+    #     totals = get_totals_row(data)
+    #     data.append(totals)
+
+    # return columns, data
+    report_summary = []
+
     if data:
         totals = get_totals_row(data)
-        data.append(totals)
 
-    return columns, data
+        report_summary = [
+            {"label": "Total Qty", "value": totals["qty"], "indicator": "Blue"},
+            {"label": "Total Amount", "value": totals["amount"], "indicator": "Blue"},
+            {"label": "Delivered Qty", "value": totals["qty_billed"], "indicator": "Green"},
+            {"label": "Qty Pending", "value": totals["qty_pending"], "indicator": "Orange"},
+            {"label": "Amount Billed", "value": totals["amount_billed"], "indicator": "Green"},
+            {"label": "Amount Pending", "value": totals["amount_pending"], "indicator": "Red"},
+            {"label": "PO Qty", "value": totals["po_qty"], "indicator": "Blue"},
+        ]
 
+    return columns, data, None, None, report_summary
 
 def get_columns():
     return [
@@ -528,12 +543,13 @@ def get_data(filters):
             soi.base_amount                                             AS amount,
             soi.custom_edd,
 
-soi.delivered_qty AS qty_billed,
+            IFNULL(soi.delivered_qty, 0) AS qty_billed,
 
-(soi.qty - IFNULL(soi.delivered_qty, 0)) AS qty_pending,
-0 AS amount_billed,
+            (soi.qty - IFNULL(soi.delivered_qty, 0)) AS qty_pending,
 
-soi.base_amount AS amount_pending,
+            (soi.billed_amt * IFNULL(so.conversion_rate, 1)) AS amount_billed,
+
+            (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) AS amount_pending,
 
             sup.name                                                    AS supplier,
             sup.supplier_name,
@@ -578,11 +594,8 @@ soi.base_amount AS amount_pending,
 GROUP BY soi.name
 
 HAVING
-(
     (soi.qty - IFNULL(soi.delivered_qty, 0)) > 0
-    OR
-    soi.base_amount > 0
-)
+
 ORDER BY so.transaction_date DESC, so.name, soi.idx
 
     """.format(conditions=conditions), filters, as_dict=1)
