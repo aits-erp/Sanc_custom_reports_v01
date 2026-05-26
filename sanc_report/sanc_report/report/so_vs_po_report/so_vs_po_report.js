@@ -239,20 +239,20 @@ frappe.query_reports["SO vs PO REPORT"] = {
         value = default_formatter(value, row, column, data);
 
         // ✅ Bold totals row
-        // if (data && data.is_total_row) {
-        //     if (column.fieldname === "customer_name") {
-        //         return `<strong style="color:#333;">Totals</strong>`;
-        //     }
-        //     // Bold numeric/currency totals
-        //     let numeric_fields = [
-        //         "qty", "amount", "qty_billed", "qty_pending",
-        //         "amount_billed", "amount_pending", "po_qty"
-        //     ];
-        //     if (in_list(numeric_fields, column.fieldname) && data[column.fieldname] != null) {
-        //         return `<strong>${value}</strong>`;
-        //     }
-        //     return value;
-        // }
+        if (data && data.is_total_row) {
+            if (column.fieldname === "customer_name") {
+                return `<strong style="color:#333;">Totals</strong>`;
+            }
+            // Bold numeric/currency totals
+            let numeric_fields = [
+                "qty", "amount", "qty_billed", "qty_pending",
+                "amount_billed", "amount_pending", "po_qty"
+            ];
+            if (in_list(numeric_fields, column.fieldname) && data[column.fieldname] != null) {
+                return `<strong>${value}</strong>`;
+            }
+            return value;
+        }
 
         // ✅ CERTIFICATE SELECT — color-coded badge
         if (column.fieldname === "custom_certificate") {
