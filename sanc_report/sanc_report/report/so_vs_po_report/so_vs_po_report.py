@@ -444,6 +444,70 @@ import frappe
 
 #     return columns, data
 
+# def execute(filters=None):
+#     columns = get_columns()
+#     data = get_data(filters)
+
+#     report_summary = []
+
+#     if data:
+#         totals = get_totals_row(data)
+
+#         currency = None
+#         if filters and filters.get("company"):
+#             currency = frappe.get_cached_value("Company", filters.get("company"), "default_currency")
+
+#         report_summary = [
+#             {
+#                 "label": "Total Qty",
+#                 "value": totals["qty"],
+#                 "indicator": "Blue",
+#                 "datatype": "Float",
+#             },
+#             {
+#                 "label": "Total Amount",
+#                 "value": totals["amount"],
+#                 "indicator": "Blue",
+#                 "datatype": "Currency",
+#                 "currency": currency,
+#             },
+#             {
+#                 "label": "Delivered Qty",
+#                 "value": totals["qty_billed"],
+#                 "indicator": "Green",
+#                 "datatype": "Float",
+#             },
+#             {
+#                 "label": "Qty Pending",
+#                 "value": totals["qty_pending"],
+#                 "indicator": "Orange",
+#                 "datatype": "Float",
+#             },
+#             {
+#                 "label": "Amount Billed",
+#                 "value": totals["amount_billed"],
+#                 "indicator": "Green",
+#                 "datatype": "Currency",
+#                 "currency": currency,
+#             },
+#             {
+#                 "label": "Amount Pending",
+#                 "value": totals["amount_pending"],
+#                 "indicator": "Red",
+#                 "datatype": "Currency",
+#                 "currency": currency,
+#             },
+#             {
+#                 "label": "PO Qty",
+#                 "value": totals["po_qty"],
+#                 "indicator": "Blue",
+#                 "datatype": "Float",
+#             },
+#         ]
+
+#     return columns, data, None, None, report_summary
+
+
 def execute(filters=None):
     columns = get_columns()
     data = get_data(filters)
@@ -505,8 +569,12 @@ def execute(filters=None):
             },
         ]
 
+        # ✅ Append totals row at the bottom of the data table
+        data.append(totals)
+
     return columns, data, None, None, report_summary
-    
+
+
 
 def get_columns():
     return [
