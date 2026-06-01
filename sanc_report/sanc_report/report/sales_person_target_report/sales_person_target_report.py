@@ -1,9 +1,6 @@
 # Copyright (c) 2026, Sukku and contributors
 # For license information, please see license.txt
 
-# import frappe
-
-
 import frappe
 from frappe import _
 from frappe.utils import flt
@@ -16,10 +13,8 @@ def execute(filters=None):
 	return columns, data
 
 
-# ── Columns ────────────────────────────────────────────────────────────────────
 def get_columns():
 	return [
-		# 1. Customer Code
 		{
 			"label":     _("Customer"),
 			"fieldname": "customer",
@@ -27,14 +22,12 @@ def get_columns():
 			"options":   "Customer",
 			"width":     150,
 		},
-		# 2. Customer Name
 		{
 			"label":     _("Customer Name"),
 			"fieldname": "customer_name",
 			"fieldtype": "Data",
 			"width":     200,
 		},
-		# 3. Sales Person
 		{
 			"label":     _("Sales Person"),
 			"fieldname": "sales_person",
@@ -42,28 +35,24 @@ def get_columns():
 			"options":   "Sales Person",
 			"width":     160,
 		},
-		# 4. Total Target
 		{
 			"label":     _("Total Target"),
 			"fieldname": "total_target",
 			"fieldtype": "Currency",
 			"width":     140,
 		},
-		# 5. Total Achieved
 		{
 			"label":     _("Total Achieved"),
 			"fieldname": "total_achieved",
 			"fieldtype": "Currency",
 			"width":     140,
 		},
-		# 6. Total Balance
 		{
 			"label":     _("Total Balance"),
 			"fieldname": "total_balance",
 			"fieldtype": "Currency",
 			"width":     140,
 		},
-		# 7. Achievement %
 		{
 			"label":     _("Achievement %"),
 			"fieldname": "achievement_percent",
@@ -73,96 +62,88 @@ def get_columns():
 	]
 
 
-# ── Data ───────────────────────────────────────────────────────────────────────
 def get_data(filters):
 	customer      = filters.get("customer", "")
 	customer_name = filters.get("customer_name", "")
-	period_type   = filters.get("period_type", "Yearly")
-	fiscal_year   = filters.get("fiscal_year") or _get_fiscal_year()
 
-	# Child doctype depends on Period Type
-	child_map = {
-		"Yearly":    "Yearly Target Detail",
-		"Quarterly": "Quarterly Target Detail",
-		"Monthly":   "Monthly Target Detail",
-	}
-	child_doctype = child_map.get(period_type, "Yearly Target Detail")
-
-	# ── Build WHERE clause ────────────────────────────────────────────────────
-	conditions = ["spt.fiscal_year = %(fiscal_year)s", "spt.docstatus < 2"]
-	params     = {"fiscal_year": fiscal_year}
-
+	parent_conditions = {"docstatus": ["<", 2]}
 	if customer:
-		conditions.append("spt.customer = %(customer)s")
-		params["customer"] = customer
+		parent_conditions["name"] = customer
 
-	if customer_name:
-		conditions.append("cust.customer_name LIKE %(customer_name)s")
-		params["customer_name"] = f"%{customer_name}%"
+	parents = frappe.get_all(
+		"Sales Person Target",
+		filters=parent_conditions,
+		fields=["name", "total_target", "total_achieved", "total_balance", "achievement_percent"],
+	)
 
-	where = " AND ".join(conditions)
-
-	sql = f"""
-		SELECT
-			spt.customer                                  AS customer,
-			COALESCE(cust.customer_name, spt.customer)   AS customer_name,
-			child.sales_person                            AS sales_person,
-			SUM(COALESCE(child.target_amount,   0))      AS total_target,
-			SUM(COALESCE(child.achieved_amount, 0))      AS total_achieved
-		FROM
-			`tabSales Person Target`  spt
-		INNER JOIN
-			`tab{child_doctype}` child ON child.parent = spt.name
-		LEFT JOIN
-			`tabCustomer` cust ON cust.name = spt.customer
-		WHERE
-			{where}
-		GROUP BY
-			spt.customer,
-			child.sales_person
-		ORDER BY
-			cust.customer_name,
-			child.sales_person
-	"""
-
-	try:
-		rows = frappe.db.sql(sql, params, as_dict=True)
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Sales Person Target Report")
+	if not parents:
 		return []
 
 	result         = []
 	grand_target   = 0.0
 	grand_achieved = 0.0
 
-	for row in rows:
-		target   = flt(row.total_target)
-		achieved = flt(row.total_achieved)
-		balance  = target - achieved
-		pct      = round((achieved / target * 100), 2) if target else 0.0
+	for parent in parents:
+		cust_code = parent.name
+		cust_name = frappe.db.get_value("Customer", cust_code, "customer_name") or cust_code
 
-		result.append({
-			"customer":            row.customer,
-			"customer_name":       row.customer_name,
-			"sales_person":        row.sales_person,
-			"total_target":        target,
-			"total_achieved":      achieved,
-			"total_balance":       balance,
-			"achievement_percent": pct,
-			"is_total_row":        0,
-		})
+		if customer_name and customer_name.lower() not in cust_name.lower():
+			continue
 
-		grand_target   += target
-		grand_achieved += achieved
+		child_rows = frappe.get_all(
+			"Yearly Target Detail",
+			filters={"parent": cust_code},
+			fields=["sales_person", "target_amount", "achieved_amount"],
+		)
 
-	# ── Grand Total row ───────────────────────────────────────────────────────
+		if not child_rows:
+			target   = flt(parent.total_target)
+			achieved = flt(parent.total_achieved)
+			balance  = flt(parent.total_balance)
+			pct      = flt(parent.achievement_percent)
+
+			result.append({
+				"customer":            cust_code,
+				"customer_name":       cust_name,
+				"sales_person":        "",
+				"total_target":        target,
+				"total_achieved":      achieved,
+				"total_balance":       balance,
+				"achievement_percent": pct,
+				"is_total_row":        0,
+			})
+			grand_target   += target
+			grand_achieved += achieved
+
+		else:
+			for child in child_rows:
+				target   = flt(child.target_amount)
+				achieved = flt(child.achieved_amount)
+				balance  = target - achieved
+				pct      = round((achieved / target * 100), 2) if target else 0.0
+
+				result.append({
+					"customer":            cust_code,
+					"customer_name":       cust_name,
+					"sales_person":        child.sales_person,
+					"total_target":        target,
+					"total_achieved":      achieved,
+					"total_balance":       balance,
+					"achievement_percent": pct,
+					"is_total_row":        0,
+				})
+				grand_target   += target
+				grand_achieved += achieved
+
+	result.sort(key=lambda x: (x["customer_name"], x["sales_person"] or ""))
+
 	if result:
 		grand_balance = grand_target - grand_achieved
 		grand_pct     = round((grand_achieved / grand_target * 100), 2) if grand_target else 0.0
 
 		result.append({
 			"customer":            "",
-			"customer_name":       "Grand Total",
+			"customer_name":       "Total",
 			"sales_person":        "",
 			"total_target":        grand_target,
 			"total_achieved":      grand_achieved,
@@ -172,16 +153,3 @@ def get_data(filters):
 		})
 
 	return result
-
-
-# ── Helper ─────────────────────────────────────────────────────────────────────
-def _get_fiscal_year():
-	return (
-		frappe.db.get_value(
-			"Fiscal Year",
-			{"disabled": 0},
-			"name",
-			order_by="year_start_date desc",
-		)
-		or ""
-	)
