@@ -52,3 +52,4 @@ frappe.query_reports["Sales Person Target Report"] = {
 		return value;
 	},
 };
+
