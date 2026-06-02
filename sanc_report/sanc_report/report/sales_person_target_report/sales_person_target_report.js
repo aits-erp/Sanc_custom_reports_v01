@@ -92,12 +92,10 @@ frappe.query_reports["Sales Person Target Report"] = {
 		value = default_formatter(value, row, column, data);
 		if (!data) return value;
 
-		// Bold grand total row
 		if (data.is_total_row) {
 			return `<strong style="color:var(--text-color);">${value}</strong>`;
 		}
 
-		// Colour Achievement %
 		if (column.fieldname === "achievement_percent") {
 			let pct   = flt(data.achievement_percent);
 			let color = pct >= 100 ? "#28a745"
