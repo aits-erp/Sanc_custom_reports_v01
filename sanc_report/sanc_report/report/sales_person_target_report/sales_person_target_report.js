@@ -59,6 +59,14 @@ frappe.query_reports["Sales Person Target Report"] = {
 
 	filters: [
 		{
+			fieldname: "fiscal_year",
+			label:     __("Fiscal Year"),
+			fieldtype: "Link",
+			options:   "Fiscal Year",
+			reqd:      1,
+			default:   frappe.defaults.get_user_default("fiscal_year"),
+		},
+		{
 			fieldname: "customer",
 			label:     __("Customer"),
 			fieldtype: "Link",
@@ -68,23 +76,10 @@ frappe.query_reports["Sales Person Target Report"] = {
 			},
 		},
 		{
-			fieldname: "fiscal_year",
-			label:     __("Fiscal Year"),
-			fieldtype: "Link",
-			options:   "Fiscal Year",
-			default:   frappe.defaults.get_user_default("fiscal_year"),
-			on_change: function () {
-				frappe.query_report.refresh();
-			},
-		},
-		{
 			fieldname: "sales_person",
 			label:     __("Sales Person"),
 			fieldtype: "Link",
 			options:   "Sales Person",
-			on_change: function () {
-				frappe.query_report.refresh();
-			},
 		},
 	],
 
@@ -94,14 +89,6 @@ frappe.query_reports["Sales Person Target Report"] = {
 
 		if (data.is_total_row) {
 			return `<strong style="color:var(--text-color);">${value}</strong>`;
-		}
-
-		if (column.fieldname === "achievement_percent") {
-			let pct   = flt(data.achievement_percent);
-			let color = pct >= 100 ? "#28a745"
-			           : pct >= 75  ? "#fd7e14"
-			           :              "#dc3545";
-			return `<span style="color:${color};font-weight:600;">${value}</span>`;
 		}
 
 		return value;
