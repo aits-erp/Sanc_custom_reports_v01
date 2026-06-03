@@ -55,8 +55,6 @@
 
 
 
-
-
 // frappe.query_reports["Sales Person Target Report"] = {
 
 // 	filters: [
@@ -94,6 +92,24 @@
 // 		}
 
 // 		return value;
+// 	},
+
+// 	onload: function (report) {
+// 		frappe.db
+// 			.get_list("Fiscal Year", {
+// 				filters:  { disabled: 0 },
+// 				fields:   ["name"],
+// 				order_by: "year_start_date desc",
+// 				limit:    1,
+// 			})
+// 			.then((list) => {
+// 				if (list && list.length) {
+// 					let fy = report.get_filter("fiscal_year");
+// 					if (fy && !fy.get_value()) {
+// 						fy.set_value(list[0].name);
+// 					}
+// 				}
+// 			});
 // 	},
 // };
 
