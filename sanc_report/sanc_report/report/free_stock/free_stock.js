@@ -8,7 +8,7 @@ frappe.query_reports["Free Stock"] = {
             fieldname: "stock_category",
             label: "Stock Categorization",
             fieldtype: "Select",
-            options: ["", "Fast Moving Stock", "Standard Stock", "Non-Standard Stock"]
+            options: ["", "Fast Moving Stock", "Standard Stock", "Non-Standard Stock", "Customized", "Stockable Item", "Raw Material For FLP"]
         },
         { fieldname: "from_date", label: "From Date", fieldtype: "Date" },
         { fieldname: "to_date", label: "To Date", fieldtype: "Date", default: frappe.datetime.get_today() },
