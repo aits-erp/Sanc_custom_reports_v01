@@ -115,6 +115,8 @@
 
 
 
+
+
 frappe.query_reports["Sales Person Target Report"] = {
 
 	filters: [
@@ -140,6 +142,14 @@ frappe.query_reports["Sales Person Target Report"] = {
 			label:     __("Sales Person"),
 			fieldtype: "Link",
 			options:   "Sales Person",
+		},
+		{
+			fieldname: "based_on",              // <-- NEW: Invoice-wise / Sales Order-wise
+			label:     __("Based On"),
+			fieldtype: "Select",
+			options:   "Sales Invoice\nSales Order",
+			default:   "Sales Invoice",
+			reqd:      1,
 		},
 	],
 

@@ -1,5 +1,5 @@
-# # Copyright (c) 2026, Sukku and contributors
-# # For license information, please see license.txt
+# # # Copyright (c) 2026, Sukku and contributors
+# # # For license information, please see license.txt
 
 # import frappe
 # from frappe import _
@@ -91,8 +91,11 @@
 # 	fy_start = fy_dates.year_start_date
 # 	fy_end   = fy_dates.year_end_date
 
-# 	# Build parent filters
-# 	parent_conditions = {"docstatus": ["<", 2]}
+# 	# ── FIXED: filter Sales Person Target by custom_fiscal_year ──────────────
+# 	parent_conditions = {
+# 		"docstatus":          ["<", 2],
+# 		"custom_fiscal_year": fiscal_year,   # <-- KEY FIX
+# 	}
 # 	if customer:
 # 		parent_conditions["name"] = customer
 
@@ -208,11 +211,6 @@
 # 	  - Sales Invoice customer  = customer
 # 	  - Sales Team sales_person = sales_person
 # 	  - Sales Invoice posting_date BETWEEN fy_start AND fy_end
-
-# 	Example for VIBGYOR TECHNOLOGIES / Sanjeev Bharti:
-# 	  - RPL/25-26/0073  Cancelled  → EXCLUDED (docstatus=2)
-# 	  - 26-27/0449      Submitted  → allocated_amount ₹11,400 → INCLUDED
-# 	  Total Achieved = ₹11,400.00
 # 	"""
 # 	result = frappe.db.sql("""
 # 		SELECT
@@ -222,10 +220,10 @@
 # 		INNER JOIN
 # 			`tabSales Team` st ON st.parent = si.name
 # 		WHERE
-# 			si.docstatus   = 1
-# 			AND si.customer       = %(customer)s
-# 			AND st.sales_person   = %(sales_person)s
-# 			AND si.posting_date  BETWEEN %(fy_start)s AND %(fy_end)s
+# 			si.docstatus        = 1
+# 			AND si.customer     = %(customer)s
+# 			AND st.sales_person = %(sales_person)s
+# 			AND si.posting_date BETWEEN %(fy_start)s AND %(fy_end)s
 # 	""", {
 # 		"customer":     customer,
 # 		"sales_person": sales_person,
@@ -329,6 +327,7 @@ def get_data(filters):
 	customer     = filters.get("customer", "")
 	sales_person = filters.get("sales_person", "")
 	fiscal_year  = filters.get("fiscal_year") or _get_fiscal_year()
+	based_on     = filters.get("based_on") or "Sales Invoice"   # <-- NEW: Invoice-wise / Sales Order-wise
 
 	# Get fiscal year date range
 	fy_dates = frappe.db.get_value(
@@ -400,10 +399,10 @@ def get_data(filters):
 			curr_yr_target   = flt(child.current_year)
 
 			# Total Achieved = SUM of allocated_amount from Sales Team
-			# on SUBMITTED Sales Invoices only (docstatus=1, NOT cancelled)
+			# on SUBMITTED Sales Invoices/Sales Orders only (docstatus=1, NOT cancelled)
 			# for this exact customer + sales_person within fiscal year
 			total_achieved = _get_invoice_achieved(
-				cust_code, sp, fy_start, fy_end
+				cust_code, sp, fy_start, fy_end, based_on   # <-- based_on passed through
 			)
 
 			# Achievement % = (Total Achieved / Current Year Target) * 100
@@ -454,27 +453,38 @@ def get_data(filters):
 	return result
 
 
-def _get_invoice_achieved(customer, sales_person, fy_start, fy_end):
+def _get_invoice_achieved(customer, sales_person, fy_start, fy_end, based_on="Sales Invoice"):
 	"""
-	Sum allocated_amount from tabSales Team (child of Sales Invoice)
+	Sum allocated_amount from tabSales Team (child of Sales Invoice OR Sales Order)
 	WHERE:
-	  - Sales Invoice docstatus = 1 (Submitted only, NOT cancelled)
-	  - Sales Invoice customer  = customer
+	  - Parent doctype   = Sales Invoice or Sales Order, depending on based_on
+	  - docstatus        = 1 (Submitted only, NOT cancelled)
+	  - customer         = customer
 	  - Sales Team sales_person = sales_person
-	  - Sales Invoice posting_date BETWEEN fy_start AND fy_end
+	  - date field BETWEEN fy_start AND fy_end
+	        (posting_date for Sales Invoice, transaction_date for Sales Order)
 	"""
-	result = frappe.db.sql("""
+	# based_on is restricted to one of these two hardcoded literals only —
+	# never taken raw from user input — so this is not vulnerable to SQL injection.
+	if based_on == "Sales Order":
+		doctype    = "Sales Order"
+		date_field = "transaction_date"
+	else:
+		doctype    = "Sales Invoice"
+		date_field = "posting_date"
+
+	result = frappe.db.sql(f"""
 		SELECT
 			SUM(st.allocated_amount) AS total
 		FROM
-			`tabSales Invoice` si
+			`tab{doctype}` si
 		INNER JOIN
 			`tabSales Team` st ON st.parent = si.name
 		WHERE
 			si.docstatus        = 1
 			AND si.customer     = %(customer)s
 			AND st.sales_person = %(sales_person)s
-			AND si.posting_date BETWEEN %(fy_start)s AND %(fy_end)s
+			AND si.{date_field} BETWEEN %(fy_start)s AND %(fy_end)s
 	""", {
 		"customer":     customer,
 		"sales_person": sales_person,
