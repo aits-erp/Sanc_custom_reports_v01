@@ -295,7 +295,6 @@
 # 		or {}
 # 	)
 
-
 # Copyright (c) 2026, Sanc and contributors
 # For license information, please see license.txt
 
@@ -359,7 +358,9 @@ def get_data(filters):
 	#   transaction_type              -> Payment Entry.custom_transaction_type
 	#                                     (IMPS/RTGS/NEFT/HDFC) -> I/N/R/M
 	#   beneficiary_code                -> running serial number
-	#   beneficiary_account_number      -> Payment Entry.bank_account_no
+	#   beneficiary_account_number      -> Bank Account.bank_account_no
+	#                                       (Bank Account linked via
+	#                                       Payment Entry.party_bank_account)
 	#   instrument_amount                -> Payment Entry.paid_amount
 	#   beneficiary_name                 -> Payment Entry.party_name
 	#   bene_address_1                   -> Address.address_line1
@@ -371,8 +372,8 @@ def get_data(filters):
 	#   customer_reference_number        -> Payment Entry.remarks
 	#   payment_details_1..7             -> blank for now (TODO - not yet mapped)
 	#   transaction_date                 -> Payment Entry.posting_date (dd/mm/yyyy)
-	#   ifsc_code                        -> (TODO - not yet mapped)
-	#   bene_bank_name                   -> Payment Entry.bank
+	#   ifsc_code                        -> Bank Account.custom_ifsc_code
+	#   bene_bank_name                   -> Bank Account.bank
 	#   bene_bank_branch_name            -> Payment Entry.bank_account
 	#   beneficiary_email                -> Payment Entry.contact_email
 	# ------------------------------------------------------------------------
@@ -403,7 +404,7 @@ def get_data(filters):
 		payment_details_6 = row.get("payment_details_6")
 		payment_details_7 = row.get("payment_details_7")
 		transaction_date = row.get("transaction_date")
-		ifsc_code = row.get("ifsc_code")  # TODO: not yet mapped
+		ifsc_code = row.get("ifsc_code")
 		bene_bank_name = row.get("bene_bank_name")
 		bene_bank_branch_name = row.get("bene_bank_branch_name")
 		beneficiary_email = row.get("beneficiary_email")
@@ -480,6 +481,9 @@ def get_data(filters):
 def get_raw_rows(filters):
 	"""
 	Real query against Payment Entry, restricted to Supplier payments only.
+	Bank details (account no / IFSC / bank name) are pulled from the linked
+	Bank Account record (Payment Entry.party_bank_account), not from
+	Payment Entry fields directly.
 	"""
 	conditions = {
 		"docstatus": 1,
@@ -501,8 +505,7 @@ def get_raw_rows(filters):
 			"paid_amount",
 			"remarks",
 			"posting_date",
-			"bank_account_no",
-			"bank",
+			"party_bank_account",
 			"bank_account",
 			"contact_email",
 		],
@@ -513,11 +516,12 @@ def get_raw_rows(filters):
 	for pe in payment_entries:
 		address = get_party_address(pe.party_type, pe.party)
 		pincode = address.get("pincode") if address else ""
+		bank_acc_details = get_bank_account_details(pe.party_bank_account)
 
 		rows.append(
 			{
 				"transaction_type": get_transaction_type_code(pe.custom_transaction_type),
-				"beneficiary_account_number": pe.bank_account_no,
+				"beneficiary_account_number": bank_acc_details.get("bank_account_no"),
 				"instrument_amount": pe.paid_amount,
 				"beneficiary_name": pe.party_name,
 				"bene_address_1": address.get("address_line1") if address else "",
@@ -535,8 +539,8 @@ def get_raw_rows(filters):
 				"payment_details_6": "",
 				"payment_details_7": "",
 				"transaction_date": formatdate(pe.posting_date, "dd/mm/yyyy") if pe.posting_date else "",
-				"ifsc_code": None,  # TODO: not yet mapped
-				"bene_bank_name": pe.bank,
+				"ifsc_code": bank_acc_details.get("custom_ifsc_code"),
+				"bene_bank_name": bank_acc_details.get("bank"),
 				"bene_bank_branch_name": pe.bank_account,
 				"beneficiary_email": pe.contact_email,
 			}
@@ -561,6 +565,28 @@ def get_transaction_type_code(custom_transaction_type):
 		"IMPS": "M",
 	}
 	return mapping.get(custom_transaction_type, "")
+
+
+def get_bank_account_details(bank_account_name):
+	"""
+	Fetches the beneficiary's Bank Account record (linked via
+	Payment Entry.party_bank_account) and returns:
+		- bank_account_no   -> Beneficiary Account Number
+		- bank              -> Bene Bank Name (e.g. "UNION BANK OF INDIA")
+		- custom_ifsc_code  -> IFSC Code
+	"""
+	if not bank_account_name:
+		return {}
+
+	return (
+		frappe.db.get_value(
+			"Bank Account",
+			bank_account_name,
+			["bank_account_no", "bank", "custom_ifsc_code"],
+			as_dict=True,
+		)
+		or {}
+	)
 
 
 def get_party_address(party_type, party):
