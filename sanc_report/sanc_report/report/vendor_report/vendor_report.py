@@ -1,6 +1,11 @@
 # Copyright (c) 2026, Sukku and contributors
 # For license information, please see license.txt
 
+# import frappe
+
+# Copyright (c) 2026, Sanc and contributors
+# For license information, please see license.txt
+
 import frappe
 from frappe import _
 from frappe.utils import cstr, formatdate
@@ -14,12 +19,18 @@ def execute(filters=None):
 
 
 def get_columns():
+	"""
+	Column order/labels are kept EXACTLY as in RBI_ADAPTER_2022.xlsx
+	(including the two 'BLANK' spacer columns required by the RBI format).
+	"""
 	return [
 		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 100},
 		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 170},
 		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 130},
 		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 200},
+		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 60},
+		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 60},
 		{"label": _("Bene Address 1"), "fieldname": "bene_address_1", "fieldtype": "Data", "width": 130},
 		{"label": _("Bene Address 2"), "fieldname": "bene_address_2", "fieldtype": "Data", "width": 130},
 		{"label": _("Bene Address 3"), "fieldname": "bene_address_3", "fieldtype": "Data", "width": 130},
@@ -34,7 +45,9 @@ def get_columns():
 		{"label": _("Payment Details 5"), "fieldname": "payment_details_5", "fieldtype": "Data", "width": 120},
 		{"label": _("Payment Details 6"), "fieldname": "payment_details_6", "fieldtype": "Data", "width": 120},
 		{"label": _("Payment Details 7"), "fieldname": "payment_details_7", "fieldtype": "Data", "width": 120},
+		{"label": _("Blank"), "fieldname": "blank_3", "fieldtype": "Data", "width": 60},
 		{"label": _("Transaction Date"), "fieldname": "transaction_date", "fieldtype": "Data", "width": 110},
+		{"label": _("Blank"), "fieldname": "blank_4", "fieldtype": "Data", "width": 60},
 		{"label": _("IFSC Code"), "fieldname": "ifsc_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Bene Bank Name"), "fieldname": "bene_bank_name", "fieldtype": "Data", "width": 160},
 		{"label": _("Bene Bank Branch Name"), "fieldname": "bene_bank_branch_name", "fieldtype": "Data", "width": 160},
@@ -46,6 +59,32 @@ def get_columns():
 def get_data(filters):
 	data = []
 
+	# ------------------------------------------------------------------------
+	# SOURCE: Payment Entry (ref_doctype)
+	#
+	# Confirmed mapping (as told):
+	#   transaction_type              -> Payment Entry.custom_transaction_type
+	#                                     (IMPS/RTGS/NEFT/HDFC) -> converted to
+	#                                     I/N/R/M single-letter RBI code
+	#   beneficiary_code                -> running serial number (unchanged)
+	#   beneficiary_account_number      -> Bank Account (TODO - not yet mapped)
+	#   instrument_amount                -> Payment Entry.paid_amount
+	#   beneficiary_name                 -> Payment Entry.party_name
+	#   bene_address_1                   -> Address.address_line1
+	#   bene_address_2                   -> Address.address_line2
+	#   bene_address_3                   -> Address.city
+	#   bene_address_4                   -> Address.county
+	#   bene_address_5                   -> Address.pincode
+	#   instruction_reference_number     -> (TODO - not yet mapped)
+	#   customer_reference_number        -> Payment Entry.remarks
+	#   payment_details_1..7             -> blank for now (TODO - not yet mapped)
+	#   transaction_date                 -> Payment Entry.posting_date (dd/mm/yyyy)
+	#   ifsc_code                        -> Bank Account (TODO - not yet mapped)
+	#   bene_bank_name                   -> Bank Account (TODO - not yet mapped)
+	#   bene_bank_branch_name            -> Bank Account (TODO - not yet mapped)
+	#   beneficiary_email                -> Employee list (TODO - not yet mapped)
+	# ------------------------------------------------------------------------
+
 	raw_rows = get_raw_rows(filters)
 
 	serial_no = 0
@@ -53,8 +92,8 @@ def get_data(filters):
 		serial_no += 1
 
 		transaction_type = row.get("transaction_type")
-		beneficiary_code = serial_no  # running serial number 1, 2, 3, 4...
-		beneficiary_account_number = row.get("beneficiary_account_number")
+		beneficiary_code = serial_no
+		beneficiary_account_number = row.get("beneficiary_account_number")  # TODO: map -> Bank Account
 		instrument_amount = row.get("instrument_amount")
 		beneficiary_name = row.get("beneficiary_name")
 		bene_address_1 = row.get("bene_address_1")
@@ -62,7 +101,7 @@ def get_data(filters):
 		bene_address_3 = row.get("bene_address_3")
 		bene_address_4 = row.get("bene_address_4")
 		bene_address_5 = row.get("bene_address_5")
-		instruction_reference_number = row.get("instruction_reference_number")
+		instruction_reference_number = row.get("instruction_reference_number")  # TODO: not yet mapped
 		customer_reference_number = row.get("customer_reference_number")
 		payment_details_1 = row.get("payment_details_1")
 		payment_details_2 = row.get("payment_details_2")
@@ -72,14 +111,11 @@ def get_data(filters):
 		payment_details_6 = row.get("payment_details_6")
 		payment_details_7 = row.get("payment_details_7")
 		transaction_date = row.get("transaction_date")
-		ifsc_code = row.get("ifsc_code")
-		bene_bank_name = row.get("bene_bank_name")
-		bene_bank_branch_name = row.get("bene_bank_branch_name")
-		beneficiary_email = row.get("beneficiary_email")
+		ifsc_code = row.get("ifsc_code")  # TODO: map -> Bank Account.ifsc_code
+		bene_bank_name = row.get("bene_bank_name")  # TODO: map -> Bank Account.bank
+		bene_bank_branch_name = row.get("bene_bank_branch_name")  # TODO: map -> Bank Account.branch
+		beneficiary_email = row.get("beneficiary_email")  # TODO: map -> Employee list
 
-		# The 4 "Blank" spacer positions required by RBI_ADAPTER_2022.xlsx are
-		# kept ONLY inside this comma string (the bank file format needs
-		# them) - they are not shown as report columns.
 		notepad_data = ",".join(
 			[
 				cstr(transaction_type),
@@ -120,6 +156,8 @@ def get_data(filters):
 				"beneficiary_account_number": beneficiary_account_number,
 				"instrument_amount": instrument_amount,
 				"beneficiary_name": beneficiary_name,
+				"blank_1": "",
+				"blank_2": "",
 				"bene_address_1": bene_address_1,
 				"bene_address_2": bene_address_2,
 				"bene_address_3": bene_address_3,
@@ -134,7 +172,9 @@ def get_data(filters):
 				"payment_details_5": payment_details_5,
 				"payment_details_6": payment_details_6,
 				"payment_details_7": payment_details_7,
+				"blank_3": "",
 				"transaction_date": transaction_date,
+				"blank_4": "",
 				"ifsc_code": ifsc_code,
 				"bene_bank_name": bene_bank_name,
 				"bene_bank_branch_name": bene_bank_branch_name,
@@ -148,147 +188,48 @@ def get_data(filters):
 
 def get_raw_rows(filters):
 	"""
-	CONFIRMED via System Console diagnostics on the live site:
-
-	- Journal Entry is NOT linked per employee (0 rows anywhere have
-	  Party Type = Employee). It is a single bulk JE per payroll run.
-	- That bulk JE is linked to its Payroll Entry through the child table
-	  Journal Entry Account, using reference_type = "Payroll Entry" and
-	  reference_name = <payroll entry name>.
-	- Salary Slip reliably has employee, net_pay, and payroll_entry.
-
-	So the report is anchored on Salary Slip, and Journal Entry fields
-	(transaction_date, cheque_no, user_remark, custom_transaction_type)
-	are pulled via: Salary Slip.payroll_entry -> Journal Entry Account
-	(reference_name = payroll_entry) -> parent Journal Entry.
-
-	If a payroll run has no linked/submitted Journal Entry yet, those
-	4 fields are simply left blank for that employee's row - the
-	employee, amount, address, and bank details are still shown.
-
-	Field mapping:
-		transaction_type            -> Journal Entry.custom_transaction_type  (derived to I/N/R/M)
-		beneficiary_account_number  -> Bank Account.bank_account_no
-		instrument_amount           -> Salary Slip.net_pay
-		beneficiary_name            -> Employee.employee_name
-		bene_address_1              -> Employee.current_accommodation_type
-		bene_address_2              -> Employee.permanent_accommodation_type
-		bene_address_3              -> Employee.custom_city
-		bene_address_4              -> Employee.custom_state
-		bene_address_5              -> Employee.custom_country
-		instruction_reference_number-> Journal Entry.cheque_no
-		customer_reference_number   -> Journal Entry.user_remark
-		payment_details_1..7        -> left blank (not mapped yet)
-		transaction_date            -> Journal Entry.posting_date
-		ifsc_code                   -> Bank Account.custom_ifsc_code
-		bene_bank_name              -> Bank Account.account_name
-		bene_bank_branch_name       -> Bank Account.bank
-		beneficiary_email           -> Employee.personal_email
+	Real query against Payment Entry, with the confirmed field mappings applied.
+	Bank Account (account number / IFSC / bank name / branch) and Employee
+	email are still placeholders (TODO) since those haven't been mapped yet.
 	"""
+	conditions = {"docstatus": 1}
+
+	if filters.get("from_date") and filters.get("to_date"):
+		conditions["posting_date"] = ["between", [filters.get("from_date"), filters.get("to_date")]]
+
+	payment_entries = frappe.get_all(
+		"Payment Entry",
+		filters=conditions,
+		fields=[
+			"name",
+			"custom_transaction_type",
+			"party_type",
+			"party",
+			"party_name",
+			"paid_amount",
+			"remarks",
+			"posting_date",
+		],
+		order_by="posting_date asc",
+	)
 
 	rows = []
-
-	salary_slips = frappe.get_all(
-		"Salary Slip",
-		filters={
-			"posting_date": ["between", [filters.get("from_date"), filters.get("to_date")]],
-			"docstatus": 1,
-		},
-		fields=["name", "employee", "employee_name", "net_pay", "payroll_entry"],
-	)
-
-	if not salary_slips:
-		return rows
-
-	# Build a Payroll Entry -> submitted Journal Entry lookup, using the
-	# Journal Entry Account reference table (the real link on this site).
-	payroll_entry_names = list({s.payroll_entry for s in salary_slips if s.payroll_entry})
-
-	je_refs = (
-		frappe.get_all(
-			"Journal Entry Account",
-			filters={
-				"reference_type": "Payroll Entry",
-				"reference_name": ["in", payroll_entry_names],
-			},
-			fields=["parent", "reference_name"],
-		)
-		if payroll_entry_names
-		else []
-	)
-
-	je_names = list({r.parent for r in je_refs})
-
-	je_details = (
-		frappe.get_all(
-			"Journal Entry",
-			filters={"name": ["in", je_names], "docstatus": 1},
-			fields=["name", "posting_date", "cheque_no", "user_remark", "custom_transaction_type"],
-		)
-		if je_names
-		else []
-	)
-	je_by_name = {je.name: je for je in je_details}
-
-	# If more than one submitted JE is linked to the same Payroll Entry
-	# (e.g. an amended entry), keep the one with the latest posting date.
-	payroll_entry_to_je = {}
-	for ref in je_refs:
-		je = je_by_name.get(ref.parent)
-		if not je:
-			continue
-		existing = payroll_entry_to_je.get(ref.reference_name)
-		if not existing or je.posting_date >= existing.posting_date:
-			payroll_entry_to_je[ref.reference_name] = je
-
-	for slip in salary_slips:
-		employee = slip.employee
-		if not employee:
-			continue
-
-		emp = (
-			frappe.db.get_value(
-				"Employee",
-				employee,
-				[
-					"employee_name",
-					"current_accommodation_type",
-					"permanent_accommodation_type",
-					"custom_city",
-					"custom_state",
-					"custom_country",
-					"personal_email",
-				],
-				as_dict=True,
-			)
-			or frappe._dict()
-		)
-
-		bank_account = (
-			frappe.db.get_value(
-				"Bank Account",
-				{"party_type": "Employee", "party": employee},
-				["bank_account_no", "custom_ifsc_code", "account_name", "bank"],
-				as_dict=True,
-			)
-			or frappe._dict()
-		)
-
-		je = payroll_entry_to_je.get(slip.payroll_entry) or frappe._dict()
+	for pe in payment_entries:
+		address = get_party_address(pe.party_type, pe.party)
 
 		rows.append(
 			{
-				"transaction_type": derive_transaction_type(je.get("custom_transaction_type")),
-				"beneficiary_account_number": bank_account.get("bank_account_no"),
-				"instrument_amount": slip.net_pay,
-				"beneficiary_name": emp.get("employee_name") or slip.employee_name,
-				"bene_address_1": emp.get("current_accommodation_type"),
-				"bene_address_2": emp.get("permanent_accommodation_type"),
-				"bene_address_3": emp.get("custom_city"),
-				"bene_address_4": emp.get("custom_state"),
-				"bene_address_5": emp.get("custom_country"),
-				"instruction_reference_number": je.get("cheque_no"),
-				"customer_reference_number": je.get("user_remark"),
+				"transaction_type": get_transaction_type_code(pe.custom_transaction_type),
+				"beneficiary_account_number": None,  # TODO: map -> Bank Account
+				"instrument_amount": pe.paid_amount,
+				"beneficiary_name": pe.party_name,
+				"bene_address_1": address.get("address_line1") if address else "",
+				"bene_address_2": address.get("address_line2") if address else "",
+				"bene_address_3": address.get("city") if address else "",
+				"bene_address_4": address.get("county") if address else "",
+				"bene_address_5": address.get("pincode") if address else "",
+				"instruction_reference_number": "",  # TODO: not yet mapped
+				"customer_reference_number": pe.remarks,
 				"payment_details_1": "",
 				"payment_details_2": "",
 				"payment_details_3": "",
@@ -296,36 +237,60 @@ def get_raw_rows(filters):
 				"payment_details_5": "",
 				"payment_details_6": "",
 				"payment_details_7": "",
-				"transaction_date": formatdate(je.get("posting_date"), "dd/mm/yyyy") if je.get("posting_date") else "",
-				"ifsc_code": bank_account.get("custom_ifsc_code"),
-				"bene_bank_name": bank_account.get("account_name"),
-				"bene_bank_branch_name": bank_account.get("bank"),
-				"beneficiary_email": emp.get("personal_email"),
+				"transaction_date": formatdate(pe.posting_date, "dd/mm/yyyy") if pe.posting_date else "",
+				"ifsc_code": None,  # TODO: map -> Bank Account.ifsc_code
+				"bene_bank_name": None,  # TODO: map -> Bank Account.bank
+				"bene_bank_branch_name": None,  # TODO: map -> Bank Account.branch
+				"beneficiary_email": None,  # TODO: map -> Employee list
 			}
 		)
 
 	return rows
 
 
-def derive_transaction_type(raw_value):
+def get_transaction_type_code(custom_transaction_type):
 	"""
-	Maps Journal Entry.custom_transaction_type to the single-letter RBI
-	code (I = IMPS, N = NEFT, R = RTGS, M = Mobile/UPI). Passed through
-	unchanged if it's already a single letter.
+	Maps Payment Entry.custom_transaction_type (IMPS / RTGS / NEFT / HDFC)
+	to the single-letter RBI adapter code:
+		I = HDFC to HDFC
+		N = NEFT
+		R = RTGS
+		M = IMPS
 	"""
-	if not raw_value:
-		return ""
-
-	value = cstr(raw_value).strip().upper()
-
-	if value in ("I", "N", "R", "M"):
-		return value
-
 	mapping = {
-		"IMPS": "I",
+		"HDFC": "I",
 		"NEFT": "N",
 		"RTGS": "R",
-		"MOBILE": "M",
-		"UPI": "M",
+		"IMPS": "M",
 	}
-	return mapping.get(value, value[:1])
+	return mapping.get(custom_transaction_type, "")
+
+
+def get_party_address(party_type, party):
+	"""
+	Fetches the Address linked to the Payment Entry's party (Supplier/Customer
+	etc., via the Dynamic Link child table) and returns address_line1,
+	address_line2, city, county and pincode - as shown in the Address master
+	screenshot.
+	"""
+	if not party_type or not party:
+		return {}
+
+	address_name = frappe.db.get_value(
+		"Dynamic Link",
+		{"link_doctype": party_type, "link_name": party, "parenttype": "Address"},
+		"parent",
+	)
+
+	if not address_name:
+		return {}
+
+	return (
+		frappe.db.get_value(
+			"Address",
+			address_name,
+			["address_line1", "address_line2", "city", "county", "pincode"],
+			as_dict=True,
+		)
+		or {}
+	)
