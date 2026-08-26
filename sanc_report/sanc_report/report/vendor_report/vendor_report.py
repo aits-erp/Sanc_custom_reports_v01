@@ -345,6 +345,8 @@
 # 	return text.strip()
 
 
+
+
 # Copyright (c) 2026, Sanc and contributors
 # For license information, please see license.txt
 
@@ -640,7 +642,7 @@ def get_bank_account_details(party_type, party):
 	bank_accounts = frappe.get_all(
 		"Bank Account",
 		filters={"party_type": party_type, "party": party},
-		fields=["name", "bank_account_no", "bank", "custom_ifsc_code", "is_default_account", "disabled"],
+		fields=["name", "bank_account_no", "bank", "custom_ifsc_code", "is_default", "disabled"],
 	)
 
 	if not bank_accounts:
@@ -648,7 +650,7 @@ def get_bank_account_details(party_type, party):
 
 	# Prefer an enabled, default account if one exists
 	for acc in bank_accounts:
-		if acc.get("is_default_account") and not acc.get("disabled"):
+		if acc.get("is_default") and not acc.get("disabled"):
 			return acc
 
 	# Otherwise prefer any enabled account
