@@ -429,7 +429,7 @@ def get_data(filters):
 	#   transaction_date                 -> Payment Entry.posting_date (dd/mm/yyyy)
 	#   ifsc_code                        -> Bank Account.custom_ifsc_code
 	#   bene_bank_name                   -> Bank Account.bank
-	#   bene_bank_branch_name            -> Payment Entry.bank_account
+	#   bene_bank_branch_name            -> Bank Account.branch_code
 	#   beneficiary_email                -> Supplier.email_id (Primary Email,
 	#                                       from the Supplier's Address & Contact tab)
 	# ------------------------------------------------------------------------
@@ -563,7 +563,6 @@ def get_raw_rows(filters):
 			"paid_amount",
 			"remarks",
 			"posting_date",
-			"bank_account",
 		],
 		order_by="posting_date asc",
 	)
@@ -598,7 +597,7 @@ def get_raw_rows(filters):
 				"transaction_date": formatdate(pe.posting_date, "dd/mm/yyyy") if pe.posting_date else "",
 				"ifsc_code": bank_acc_details.get("custom_ifsc_code"),
 				"bene_bank_name": bank_acc_details.get("bank"),
-				"bene_bank_branch_name": pe.bank_account,
+				"bene_bank_branch_name": bank_acc_details.get("branch_code"),
 				"beneficiary_email": beneficiary_email,
 			}
 		)
@@ -642,7 +641,7 @@ def get_bank_account_details(party_type, party):
 	bank_accounts = frappe.get_all(
 		"Bank Account",
 		filters={"party_type": party_type, "party": party},
-		fields=["name", "bank_account_no", "bank", "custom_ifsc_code", "is_default", "disabled"],
+		fields=["name", "bank_account_no", "bank", "custom_ifsc_code", "branch_code", "is_default", "disabled"],
 	)
 
 	if not bank_accounts:
@@ -664,13 +663,55 @@ def get_bank_account_details(party_type, party):
 
 def get_supplier_email(party):
 	"""
-	Fetches the Supplier's Primary Email (Supplier.email_id, shown under
-	the Address & Contact tab on the Supplier form).
+	Fetches the Contact.email_id for this Supplier.
+
+	Contacts created against a Supplier are named as "-<supplier_id>"
+	(e.g. Supplier "V00000037" -> Contact "-V00000037"), as seen under
+	CRM > Contact. We try that direct lookup first (fast, single query),
+	and fall back to searching via the Dynamic Link table (in case a
+	supplier's contact doesn't follow that naming pattern, or has
+	multiple linked contacts).
 	"""
 	if not party:
 		return ""
 
-	return frappe.db.get_value("Supplier", party, "email_id") or ""
+	# 1) Fast path: direct guess based on the "-<supplier_id>" naming convention
+	direct_contact_name = f"-{party}"
+	email = frappe.db.get_value("Contact", direct_contact_name, "email_id")
+	if email:
+		return email
+
+	# 2) Fallback: search via Dynamic Link (covers contacts not following
+	#    the "-<supplier_id>" naming convention, or multiple linked contacts)
+	contact_links = frappe.get_all(
+		"Dynamic Link",
+		filters={"link_doctype": "Supplier", "link_name": party, "parenttype": "Contact"},
+		fields=["parent"],
+	)
+
+	if not contact_links:
+		return ""
+
+	contact_names = [c.parent for c in contact_links]
+
+	contacts = frappe.get_all(
+		"Contact",
+		filters={"name": ["in", contact_names]},
+		fields=["name", "email_id", "is_primary_contact"],
+	)
+
+	if not contacts:
+		return ""
+
+	for contact in contacts:
+		if contact.get("is_primary_contact") and contact.get("email_id"):
+			return contact.get("email_id")
+
+	for contact in contacts:
+		if contact.get("email_id"):
+			return contact.get("email_id")
+
+	return ""
 
 
 def get_party_address(party_type, party):
