@@ -1,5 +1,5 @@
-# # # Copyright (c) 2026, Sukku and contributors
-# # # For license information, please see license.txt
+# # Copyright (c) 2026, Sanc and contributors
+# # For license information, please see license.txt
 
 # import re
 
@@ -62,8 +62,11 @@
 # 	#                                     (IMPS/RTGS/NEFT/HDFC) -> I/N/R/M
 # 	#   beneficiary_code                -> running serial number
 # 	#   beneficiary_account_number      -> Bank Account.bank_account_no
-# 	#                                       (Bank Account linked via
-# 	#                                       Payment Entry.party_bank_account)
+# 	#                                       (Bank Account found by filtering
+# 	#                                       party_type = "Supplier",
+# 	#                                       party = Payment Entry.party -
+# 	#                                       NOT via Payment Entry.party_bank_account,
+# 	#                                       since that link is not populated)
 # 	#   instrument_amount                -> Payment Entry.paid_amount
 # 	#   beneficiary_name                 -> Payment Entry.party_name
 # 	#   bene_address_1                   -> Address.address_line1
@@ -77,8 +80,9 @@
 # 	#   transaction_date                 -> Payment Entry.posting_date (dd/mm/yyyy)
 # 	#   ifsc_code                        -> Bank Account.custom_ifsc_code
 # 	#   bene_bank_name                   -> Bank Account.bank
-# 	#   bene_bank_branch_name            -> Payment Entry.bank_account
-# 	#   beneficiary_email                -> Payment Entry.contact_email
+# 	#   bene_bank_branch_name            -> Bank Account.branch_code
+# 	#   beneficiary_email                -> Supplier.email_id (Primary Email,
+# 	#                                       from the Supplier's Address & Contact tab)
 # 	# ------------------------------------------------------------------------
 
 # 	raw_rows = get_raw_rows(filters)
@@ -184,9 +188,11 @@
 # def get_raw_rows(filters):
 # 	"""
 # 	Real query against Payment Entry, restricted to Supplier payments only.
-# 	Bank details (account no / IFSC / bank name) are pulled from the linked
-# 	Bank Account record (Payment Entry.party_bank_account), not from
-# 	Payment Entry fields directly.
+# 	Bank details (account no / IFSC / bank name) are pulled from the Bank
+# 	Account record found by filtering party_type = "Supplier" and
+# 	party = Payment Entry.party (the same filter you use manually in the
+# 	Bank Account list view) - NOT via Payment Entry.party_bank_account,
+# 	since that link field is not populated on your entries.
 # 	"""
 # 	conditions = {
 # 		"docstatus": 1,
@@ -208,9 +214,6 @@
 # 			"paid_amount",
 # 			"remarks",
 # 			"posting_date",
-# 			"party_bank_account",
-# 			"bank_account",
-# 			"contact_email",
 # 		],
 # 		order_by="posting_date asc",
 # 	)
@@ -219,7 +222,8 @@
 # 	for pe in payment_entries:
 # 		address = get_party_address(pe.party_type, pe.party)
 # 		pincode = address.get("pincode") if address else ""
-# 		bank_acc_details = get_bank_account_details(pe.party_bank_account)
+# 		bank_acc_details = get_bank_account_details(pe.party_type, pe.party)
+# 		beneficiary_email = get_supplier_email(pe.party)
 
 # 		rows.append(
 # 			{
@@ -244,8 +248,8 @@
 # 				"transaction_date": formatdate(pe.posting_date, "dd/mm/yyyy") if pe.posting_date else "",
 # 				"ifsc_code": bank_acc_details.get("custom_ifsc_code"),
 # 				"bene_bank_name": bank_acc_details.get("bank"),
-# 				"bene_bank_branch_name": pe.bank_account,
-# 				"beneficiary_email": pe.contact_email,
+# 				"bene_bank_branch_name": bank_acc_details.get("branch_code"),
+# 				"beneficiary_email": beneficiary_email,
 # 			}
 # 		)
 
@@ -270,26 +274,95 @@
 # 	return mapping.get(custom_transaction_type, "")
 
 
-# def get_bank_account_details(bank_account_name):
+# def get_bank_account_details(party_type, party):
 # 	"""
-# 	Fetches the beneficiary's Bank Account record (linked via
-# 	Payment Entry.party_bank_account) and returns:
+# 	Finds the Bank Account record for this party by filtering
+# 	party_type = "Supplier", party = <supplier> - same as filtering
+# 	manually in the Bank Account list view - and returns:
 # 		- bank_account_no   -> Beneficiary Account Number
 # 		- bank              -> Bene Bank Name (e.g. "UNION BANK OF INDIA")
 # 		- custom_ifsc_code  -> IFSC Code
+
+# 	If a supplier has more than one Bank Account, the enabled/default one
+# 	is preferred; otherwise the first match found is used.
 # 	"""
-# 	if not bank_account_name:
+# 	if not party_type or not party:
 # 		return {}
 
-# 	return (
-# 		frappe.db.get_value(
-# 			"Bank Account",
-# 			bank_account_name,
-# 			["bank_account_no", "bank", "custom_ifsc_code"],
-# 			as_dict=True,
-# 		)
-# 		or {}
+# 	bank_accounts = frappe.get_all(
+# 		"Bank Account",
+# 		filters={"party_type": party_type, "party": party},
+# 		fields=["name", "bank_account_no", "bank", "custom_ifsc_code", "branch_code", "is_default", "disabled"],
 # 	)
+
+# 	if not bank_accounts:
+# 		return {}
+
+# 	# Prefer an enabled, default account if one exists
+# 	for acc in bank_accounts:
+# 		if acc.get("is_default") and not acc.get("disabled"):
+# 			return acc
+
+# 	# Otherwise prefer any enabled account
+# 	for acc in bank_accounts:
+# 		if not acc.get("disabled"):
+# 			return acc
+
+# 	# Fall back to the first record found
+# 	return bank_accounts[0]
+
+
+# def get_supplier_email(party):
+# 	"""
+# 	Fetches the Contact.email_id for this Supplier.
+
+# 	Contacts created against a Supplier are named as "-<supplier_id>"
+# 	(e.g. Supplier "V00000037" -> Contact "-V00000037"), as seen under
+# 	CRM > Contact. We try that direct lookup first (fast, single query),
+# 	and fall back to searching via the Dynamic Link table (in case a
+# 	supplier's contact doesn't follow that naming pattern, or has
+# 	multiple linked contacts).
+# 	"""
+# 	if not party:
+# 		return ""
+
+# 	# 1) Fast path: direct guess based on the "-<supplier_id>" naming convention
+# 	direct_contact_name = f"-{party}"
+# 	email = frappe.db.get_value("Contact", direct_contact_name, "email_id")
+# 	if email:
+# 		return email
+
+# 	# 2) Fallback: search via Dynamic Link (covers contacts not following
+# 	#    the "-<supplier_id>" naming convention, or multiple linked contacts)
+# 	contact_links = frappe.get_all(
+# 		"Dynamic Link",
+# 		filters={"link_doctype": "Supplier", "link_name": party, "parenttype": "Contact"},
+# 		fields=["parent"],
+# 	)
+
+# 	if not contact_links:
+# 		return ""
+
+# 	contact_names = [c.parent for c in contact_links]
+
+# 	contacts = frappe.get_all(
+# 		"Contact",
+# 		filters={"name": ["in", contact_names]},
+# 		fields=["name", "email_id", "is_primary_contact"],
+# 	)
+
+# 	if not contacts:
+# 		return ""
+
+# 	for contact in contacts:
+# 		if contact.get("is_primary_contact") and contact.get("email_id"):
+# 			return contact.get("email_id")
+
+# 	for contact in contacts:
+# 		if contact.get("email_id"):
+# 			return contact.get("email_id")
+
+# 	return ""
 
 
 # def get_party_address(party_type, party):
@@ -345,8 +418,6 @@
 # 	return text.strip()
 
 
-
-
 # Copyright (c) 2026, Sanc and contributors
 # For license information, please see license.txt
 
@@ -366,17 +437,35 @@ def execute(filters=None):
 
 def get_columns():
 	"""
-	Same column order as RBI_ADAPTER_2022.xlsx, minus the 4 'BLANK' spacer
-	columns (removed from the report grid on request - they are still
-	represented as empty positions inside the Notepad export string below,
-	since the bank file format still needs those fixed positions).
+	Same column order as RBI_ADAPTER_2022.xlsx.
+
+	The 4 'BLANK' spacer columns are back in the grid (per request), kept
+	empty for now - to be mapped to a real field later. They sit in the
+	exact same positions as the original RBI adapter layout:
+		- 2 blanks right after "Beneficiary Name"
+		- 1 blank right after "Payment Details 7"
+		- 1 blank right after "Transaction Date"
+
+	"Transaction Type" is now an editable Select column (I/N/R/M) so it can
+	be picked manually in the report grid. It still defaults to the value
+	auto-mapped from Payment Entry.custom_transaction_type - manual
+	selection just lets you override that default when needed.
 	"""
 	return [
-		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 100},
+		{
+			"label": _("Transaction Type"),
+			"fieldname": "transaction_type",
+			"fieldtype": "Select",
+			"options": "\nI\nN\nR\nM",
+			"editable": 1,
+			"width": 100,
+		},
 		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 170},
 		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 130},
 		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 200},
+		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 60},
+		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 60},
 		{"label": _("Bene Address 1"), "fieldname": "bene_address_1", "fieldtype": "Data", "width": 130},
 		{"label": _("Bene Address 2"), "fieldname": "bene_address_2", "fieldtype": "Data", "width": 130},
 		{"label": _("Bene Address 3"), "fieldname": "bene_address_3", "fieldtype": "Data", "width": 130},
@@ -391,7 +480,9 @@ def get_columns():
 		{"label": _("Payment Details 5"), "fieldname": "payment_details_5", "fieldtype": "Data", "width": 120},
 		{"label": _("Payment Details 6"), "fieldname": "payment_details_6", "fieldtype": "Data", "width": 120},
 		{"label": _("Payment Details 7"), "fieldname": "payment_details_7", "fieldtype": "Data", "width": 120},
+		{"label": _("Blank"), "fieldname": "blank_3", "fieldtype": "Data", "width": 60},
 		{"label": _("Transaction Date"), "fieldname": "transaction_date", "fieldtype": "Data", "width": 110},
+		{"label": _("Blank"), "fieldname": "blank_4", "fieldtype": "Data", "width": 60},
 		{"label": _("IFSC Code"), "fieldname": "ifsc_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Bene Bank Name"), "fieldname": "bene_bank_name", "fieldtype": "Data", "width": 160},
 		{"label": _("Bene Bank Branch Name"), "fieldname": "bene_bank_branch_name", "fieldtype": "Data", "width": 160},
@@ -409,15 +500,16 @@ def get_data(filters):
 	# Confirmed mapping:
 	#   transaction_type              -> Payment Entry.custom_transaction_type
 	#                                     (IMPS/RTGS/NEFT/HDFC) -> I/N/R/M
+	#                                     (shown as an editable Select in the
+	#                                     grid so it can be manually overridden)
 	#   beneficiary_code                -> running serial number
 	#   beneficiary_account_number      -> Bank Account.bank_account_no
 	#                                       (Bank Account found by filtering
 	#                                       party_type = "Supplier",
-	#                                       party = Payment Entry.party -
-	#                                       NOT via Payment Entry.party_bank_account,
-	#                                       since that link is not populated)
+	#                                       party = Payment Entry.party)
 	#   instrument_amount                -> Payment Entry.paid_amount
 	#   beneficiary_name                 -> Payment Entry.party_name
+	#   blank_1, blank_2                 -> not mapped (kept empty, RBI spacer slots)
 	#   bene_address_1                   -> Address.address_line1
 	#   bene_address_2                   -> Address.address_line2 (pincode stripped out)
 	#   bene_address_3                   -> Address.city
@@ -426,12 +518,13 @@ def get_data(filters):
 	#   instruction_reference_number     -> (TODO - not yet mapped)
 	#   customer_reference_number        -> Payment Entry.remarks
 	#   payment_details_1..7             -> blank for now (TODO - not yet mapped)
+	#   blank_3                          -> not mapped (kept empty, RBI spacer slot)
 	#   transaction_date                 -> Payment Entry.posting_date (dd/mm/yyyy)
+	#   blank_4                          -> not mapped (kept empty, RBI spacer slot)
 	#   ifsc_code                        -> Bank Account.custom_ifsc_code
 	#   bene_bank_name                   -> Bank Account.bank
 	#   bene_bank_branch_name            -> Bank Account.branch_code
-	#   beneficiary_email                -> Supplier.email_id (Primary Email,
-	#                                       from the Supplier's Address & Contact tab)
+	#   beneficiary_email                -> Contact.email_id (Contact linked to Supplier)
 	# ------------------------------------------------------------------------
 
 	raw_rows = get_raw_rows(filters)
@@ -466,8 +559,8 @@ def get_data(filters):
 		beneficiary_email = row.get("beneficiary_email")
 
 		# Notepad export string keeps the original RBI fixed-position layout,
-		# including the 4 blank slots (as blank commas), even though those
-		# 4 columns are no longer shown as separate columns in the report grid.
+		# including the 4 blank slots (as blank commas), matching the same
+		# positions as the Blank columns shown in the grid.
 		notepad_data = ",".join(
 			[
 				cstr(transaction_type),
@@ -508,6 +601,8 @@ def get_data(filters):
 				"beneficiary_account_number": beneficiary_account_number,
 				"instrument_amount": instrument_amount,
 				"beneficiary_name": beneficiary_name,
+				"blank_1": "",
+				"blank_2": "",
 				"bene_address_1": bene_address_1,
 				"bene_address_2": bene_address_2,
 				"bene_address_3": bene_address_3,
@@ -522,7 +617,9 @@ def get_data(filters):
 				"payment_details_5": payment_details_5,
 				"payment_details_6": payment_details_6,
 				"payment_details_7": payment_details_7,
+				"blank_3": "",
 				"transaction_date": transaction_date,
+				"blank_4": "",
 				"ifsc_code": ifsc_code,
 				"bene_bank_name": bene_bank_name,
 				"bene_bank_branch_name": bene_bank_branch_name,
@@ -537,11 +634,9 @@ def get_data(filters):
 def get_raw_rows(filters):
 	"""
 	Real query against Payment Entry, restricted to Supplier payments only.
-	Bank details (account no / IFSC / bank name) are pulled from the Bank
-	Account record found by filtering party_type = "Supplier" and
-	party = Payment Entry.party (the same filter you use manually in the
-	Bank Account list view) - NOT via Payment Entry.party_bank_account,
-	since that link field is not populated on your entries.
+	Bank details (account no / IFSC / bank name / branch code) are pulled
+	from the Bank Account record found by filtering party_type = "Supplier"
+	and party = Payment Entry.party.
 	"""
 	conditions = {
 		"docstatus": 1,
@@ -613,6 +708,9 @@ def get_transaction_type_code(custom_transaction_type):
 		N = NEFT
 		R = RTGS
 		M = IMPS
+
+	This is used only as the DEFAULT value shown in the grid - the
+	Transaction Type column is editable, so it can be manually overridden.
 	"""
 	mapping = {
 		"HDFC": "I",
@@ -631,6 +729,7 @@ def get_bank_account_details(party_type, party):
 		- bank_account_no   -> Beneficiary Account Number
 		- bank              -> Bene Bank Name (e.g. "UNION BANK OF INDIA")
 		- custom_ifsc_code  -> IFSC Code
+		- branch_code       -> Bene Bank Branch Name
 
 	If a supplier has more than one Bank Account, the enabled/default one
 	is preferred; otherwise the first match found is used.

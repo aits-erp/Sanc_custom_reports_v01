@@ -1,6 +1,3 @@
-# # Copyright (c) 2026, Sukku and contributors
-# # For license information, please see license.txt
-
 
 # import frappe
 # from frappe import _
@@ -161,8 +158,13 @@
 # 	  Journal Entry Account, using reference_type = "Payroll Entry" and
 # 	  reference_name = <payroll entry name>.
 # 	- Salary Slip reliably has employee, net_pay, and payroll_entry.
+# 	- Bank details (bank_name, bank_ac_no, ifsc_code) are stored directly
+# 	  on the Employee master (Salary tab -> Bank Details section), NOT on
+# 	  a separate Bank Account doctype record. Confirmed from the Employee
+# 	  form UI - there is no Bank Account child/link being used on this site.
 
-# 	So the report is anchored on Salary Slip, and Journal Entry fields
+# 	So the report is anchored on Salary Slip, employee bank fields are
+# 	pulled straight from Employee, and Journal Entry fields
 # 	(transaction_date, cheque_no, user_remark, custom_transaction_type)
 # 	are pulled via: Salary Slip.payroll_entry -> Journal Entry Account
 # 	(reference_name = payroll_entry) -> parent Journal Entry.
@@ -173,7 +175,7 @@
 
 # 	Field mapping:
 # 		transaction_type            -> Journal Entry.custom_transaction_type  (derived to I/N/R/M)
-# 		beneficiary_account_number  -> Bank Account.bank_account_no
+# 		beneficiary_account_number  -> Employee.bank_ac_no
 # 		instrument_amount           -> Salary Slip.net_pay
 # 		beneficiary_name            -> Employee.employee_name
 # 		bene_address_1              -> Employee.current_accommodation_type
@@ -185,9 +187,9 @@
 # 		customer_reference_number   -> Journal Entry.user_remark
 # 		payment_details_1..7        -> left blank (not mapped yet)
 # 		transaction_date            -> Journal Entry.posting_date
-# 		ifsc_code                   -> Bank Account.custom_ifsc_code
-# 		bene_bank_name              -> Bank Account.account_name
-# 		bene_bank_branch_name       -> Bank Account.bank
+# 		ifsc_code                   -> Employee.ifsc_code
+# 		bene_bank_name              -> Employee.bank_name
+# 		bene_bank_branch_name       -> left blank (no branch field on Employee)
 # 		beneficiary_email           -> Employee.personal_email
 # 	"""
 
@@ -263,17 +265,10 @@
 # 					"custom_state",
 # 					"custom_country",
 # 					"personal_email",
+# 					"bank_name",
+# 					"bank_ac_no",
+# 					"ifsc_code",
 # 				],
-# 				as_dict=True,
-# 			)
-# 			or frappe._dict()
-# 		)
-
-# 		bank_account = (
-# 			frappe.db.get_value(
-# 				"Bank Account",
-# 				{"party_type": "Employee", "party": employee},
-# 				["bank_account_no", "custom_ifsc_code", "account_name", "bank"],
 # 				as_dict=True,
 # 			)
 # 			or frappe._dict()
@@ -284,7 +279,7 @@
 # 		rows.append(
 # 			{
 # 				"transaction_type": derive_transaction_type(je.get("custom_transaction_type")),
-# 				"beneficiary_account_number": bank_account.get("bank_account_no"),
+# 				"beneficiary_account_number": emp.get("bank_ac_no"),
 # 				"instrument_amount": slip.net_pay,
 # 				"beneficiary_name": emp.get("employee_name") or slip.employee_name,
 # 				"bene_address_1": emp.get("current_accommodation_type"),
@@ -302,9 +297,9 @@
 # 				"payment_details_6": "",
 # 				"payment_details_7": "",
 # 				"transaction_date": formatdate(je.get("posting_date"), "dd/mm/yyyy") if je.get("posting_date") else "",
-# 				"ifsc_code": bank_account.get("custom_ifsc_code"),
-# 				"bene_bank_name": bank_account.get("account_name"),
-# 				"bene_bank_branch_name": bank_account.get("bank"),
+# 				"ifsc_code": emp.get("ifsc_code"),
+# 				"bene_bank_name": emp.get("bank_name"),
+# 				"bene_bank_branch_name": "",
 # 				"beneficiary_email": emp.get("personal_email"),
 # 			}
 # 		)
@@ -333,7 +328,9 @@
 # 		"MOBILE": "M",
 # 		"UPI": "M",
 # 	}
-# 	return mapping.get(value, value[:1]) 
+# 	return mapping.get(value, value[:1])
+
+
 
 # Copyright (c) 2026, Sukku and contributors
 # For license information, please see license.txt
@@ -353,15 +350,33 @@ def execute(filters=None):
 
 def get_columns():
 	"""
-	4 spacer 'Blank' columns removed as requested - only real, mapped
-	columns remain.
+	The 4 'Blank' spacer columns required by the RBI_ADAPTER_2022.xlsx
+	format are shown again as real (currently empty) columns, in the
+	exact positions the bank template expects:
+		- 2 blanks right after Beneficiary Name
+		- 1 blank right after Payment Details 7
+		- 1 blank right after Transaction Date
+
+	Transaction Type is a manually selectable field (Select fieldtype,
+	editable in the report grid) with options I / N / R / M. It is
+	pre-filled from Salary Slip.custom_transaction_type as a default,
+	but can be changed by hand per row directly in the report.
 	"""
 	return [
-		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 100},
+		{
+			"label": _("Transaction Type"),
+			"fieldname": "transaction_type",
+			"fieldtype": "Select",
+			"options": "\nI\nN\nR\nM",
+			"width": 110,
+			"editable": 1,
+		},
 		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 170},
 		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 130},
 		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 200},
+		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 80},
+		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 80},
 		{"label": _("Bene Address 1"), "fieldname": "bene_address_1", "fieldtype": "Data", "width": 130},
 		{"label": _("Bene Address 2"), "fieldname": "bene_address_2", "fieldtype": "Data", "width": 130},
 		{"label": _("Bene Address 3"), "fieldname": "bene_address_3", "fieldtype": "Data", "width": 130},
@@ -376,7 +391,9 @@ def get_columns():
 		{"label": _("Payment Details 5"), "fieldname": "payment_details_5", "fieldtype": "Data", "width": 120},
 		{"label": _("Payment Details 6"), "fieldname": "payment_details_6", "fieldtype": "Data", "width": 120},
 		{"label": _("Payment Details 7"), "fieldname": "payment_details_7", "fieldtype": "Data", "width": 120},
+		{"label": _("Blank"), "fieldname": "blank_3", "fieldtype": "Data", "width": 80},
 		{"label": _("Transaction Date"), "fieldname": "transaction_date", "fieldtype": "Data", "width": 110},
+		{"label": _("Blank"), "fieldname": "blank_4", "fieldtype": "Data", "width": 80},
 		{"label": _("IFSC Code"), "fieldname": "ifsc_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Bene Bank Name"), "fieldname": "bene_bank_name", "fieldtype": "Data", "width": 160},
 		{"label": _("Bene Bank Branch Name"), "fieldname": "bene_bank_branch_name", "fieldtype": "Data", "width": 160},
@@ -420,8 +437,8 @@ def get_data(filters):
 		beneficiary_email = row.get("beneficiary_email")
 
 		# The 4 "Blank" spacer positions required by RBI_ADAPTER_2022.xlsx are
-		# kept ONLY inside this comma string (the bank file format needs
-		# them) - they are not shown as report columns.
+		# kept as empty strings here too - same positions as the visible
+		# blank_1 / blank_2 / blank_3 / blank_4 columns above.
 		notepad_data = ",".join(
 			[
 				cstr(transaction_type),
@@ -462,6 +479,8 @@ def get_data(filters):
 				"beneficiary_account_number": beneficiary_account_number,
 				"instrument_amount": instrument_amount,
 				"beneficiary_name": beneficiary_name,
+				"blank_1": "",
+				"blank_2": "",
 				"bene_address_1": bene_address_1,
 				"bene_address_2": bene_address_2,
 				"bene_address_3": bene_address_3,
@@ -476,7 +495,9 @@ def get_data(filters):
 				"payment_details_5": payment_details_5,
 				"payment_details_6": payment_details_6,
 				"payment_details_7": payment_details_7,
+				"blank_3": "",
 				"transaction_date": transaction_date,
+				"blank_4": "",
 				"ifsc_code": ifsc_code,
 				"bene_bank_name": bene_bank_name,
 				"bene_bank_branch_name": bene_bank_branch_name,
@@ -497,24 +518,28 @@ def get_raw_rows(filters):
 	- That bulk JE is linked to its Payroll Entry through the child table
 	  Journal Entry Account, using reference_type = "Payroll Entry" and
 	  reference_name = <payroll entry name>.
-	- Salary Slip reliably has employee, net_pay, and payroll_entry.
+	- Salary Slip reliably has employee, net_pay, payroll_entry, and its
+	  own custom_transaction_type field (visible directly on the Salary
+	  Slip form's Details tab).
 	- Bank details (bank_name, bank_ac_no, ifsc_code) are stored directly
 	  on the Employee master (Salary tab -> Bank Details section), NOT on
-	  a separate Bank Account doctype record. Confirmed from the Employee
-	  form UI - there is no Bank Account child/link being used on this site.
+	  a separate Bank Account doctype record.
 
-	So the report is anchored on Salary Slip, employee bank fields are
-	pulled straight from Employee, and Journal Entry fields
-	(transaction_date, cheque_no, user_remark, custom_transaction_type)
-	are pulled via: Salary Slip.payroll_entry -> Journal Entry Account
-	(reference_name = payroll_entry) -> parent Journal Entry.
+	So the report is anchored on Salary Slip. Transaction Type is now
+	sourced from Salary Slip.custom_transaction_type (used only as a
+	starting default - it's editable by hand in the report grid).
+	Employee bank fields are pulled straight from Employee, and the
+	remaining Journal Entry fields (transaction_date, cheque_no,
+	user_remark) are pulled via: Salary Slip.payroll_entry ->
+	Journal Entry Account (reference_name = payroll_entry) -> parent
+	Journal Entry.
 
 	If a payroll run has no linked/submitted Journal Entry yet, those
-	4 fields are simply left blank for that employee's row - the
+	fields are simply left blank for that employee's row - the
 	employee, amount, address, and bank details are still shown.
 
 	Field mapping:
-		transaction_type            -> Journal Entry.custom_transaction_type  (derived to I/N/R/M)
+		transaction_type            -> Salary Slip.custom_transaction_type  (derived to I/N/R/M, editable in report)
 		beneficiary_account_number  -> Employee.bank_ac_no
 		instrument_amount           -> Salary Slip.net_pay
 		beneficiary_name            -> Employee.employee_name
@@ -541,7 +566,7 @@ def get_raw_rows(filters):
 			"posting_date": ["between", [filters.get("from_date"), filters.get("to_date")]],
 			"docstatus": 1,
 		},
-		fields=["name", "employee", "employee_name", "net_pay", "payroll_entry"],
+		fields=["name", "employee", "employee_name", "net_pay", "payroll_entry", "custom_transaction_type"],
 	)
 
 	if not salary_slips:
@@ -570,7 +595,7 @@ def get_raw_rows(filters):
 		frappe.get_all(
 			"Journal Entry",
 			filters={"name": ["in", je_names], "docstatus": 1},
-			fields=["name", "posting_date", "cheque_no", "user_remark", "custom_transaction_type"],
+			fields=["name", "posting_date", "cheque_no", "user_remark"],
 		)
 		if je_names
 		else []
@@ -618,7 +643,7 @@ def get_raw_rows(filters):
 
 		rows.append(
 			{
-				"transaction_type": derive_transaction_type(je.get("custom_transaction_type")),
+				"transaction_type": derive_transaction_type(slip.get("custom_transaction_type")),
 				"beneficiary_account_number": emp.get("bank_ac_no"),
 				"instrument_amount": slip.net_pay,
 				"beneficiary_name": emp.get("employee_name") or slip.employee_name,
@@ -649,9 +674,11 @@ def get_raw_rows(filters):
 
 def derive_transaction_type(raw_value):
 	"""
-	Maps Journal Entry.custom_transaction_type to the single-letter RBI
+	Maps Salary Slip.custom_transaction_type to the single-letter RBI
 	code (I = IMPS, N = NEFT, R = RTGS, M = Mobile/UPI). Passed through
-	unchanged if it's already a single letter.
+	unchanged if it's already a single letter. Used only as the default
+	value shown in the report - the Transaction Type column is editable,
+	so it can be changed by hand for each row.
 	"""
 	if not raw_value:
 		return ""
