@@ -39,6 +39,49 @@
 # 		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 200},
 # 		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 80},
 # 		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 80},
+
+# Copyright (c) 2026, Sukku and contributors
+# For license information, please see license.txt
+
+
+# import frappe
+# from frappe import _
+# from frappe.utils import cstr, formatdate
+
+
+# def execute(filters=None):
+# 	filters = filters or {}
+# 	columns = get_columns()
+# 	data = get_data(filters)
+# 	return columns, data
+
+
+# def get_columns():
+# 	"""
+# 	The 4 'Blank' spacer columns required by the RBI_ADAPTER_2022.xlsx
+# 	format are shown again as real (currently empty) columns, in the
+# 	exact positions the bank template expects:
+# 		- 2 blanks right after Beneficiary Name
+# 		- 1 blank right after Payment Details 7
+# 		- 1 blank right after Transaction Date
+
+# 	Transaction Type is plain Data here - the manual I/N/R/M dropdown is
+# 	rendered client-side via the report's formatter() (same pattern as
+# 	the AWB Number / Remark columns in SO vs PO Report). Whatever value
+# 	is picked is saved back onto the underlying Salary Slip
+# 	(custom_transaction_type) via the update_transaction_type API below,
+# 	so it survives a report refresh and shows correctly in Excel export
+# 	and the notepad download - all three read it from the same saved
+# 	field.
+# 	"""
+# 	return [
+# 		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 110},
+# 		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 110},
+# 		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 170},
+# 		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 130},
+# 		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 200},
+# 		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 80},
+# 		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 80},
 # 		{"label": _("Bene Address 1"), "fieldname": "bene_address_1", "fieldtype": "Data", "width": 130},
 # 		{"label": _("Bene Address 2"), "fieldname": "bene_address_2", "fieldtype": "Data", "width": 130},
 # 		{"label": _("Bene Address 3"), "fieldname": "bene_address_3", "fieldtype": "Data", "width": 130},
@@ -136,6 +179,11 @@
 
 # 		data.append(
 # 			{
+# 				# Hidden reference field - not in get_columns(), so it never
+# 				# renders as its own visible column, but the JS formatter
+# 				# uses it to know which Salary Slip to update when
+# 				# Transaction Type is changed in this row.
+# 				"salary_slip": row.get("salary_slip"),
 # 				"transaction_type": transaction_type,
 # 				"beneficiary_code": beneficiary_code,
 # 				"beneficiary_account_number": beneficiary_account_number,
@@ -182,26 +230,17 @@
 # 	  reference_name = <payroll entry name>.
 # 	- Salary Slip reliably has employee, net_pay, payroll_entry, and its
 # 	  own custom_transaction_type field (visible directly on the Salary
-# 	  Slip form's Details tab).
+# 	  Slip form's Details tab). This is now the single source of truth
+# 	  for Transaction Type - manual edits made in the report grid are
+# 	  saved back onto this same field via update_transaction_type(), so
+# 	  the value persists across refreshes and shows correctly in Excel
+# 	  export and the notepad download too.
 # 	- Bank details (bank_name, bank_ac_no, ifsc_code) are stored directly
 # 	  on the Employee master (Salary tab -> Bank Details section), NOT on
 # 	  a separate Bank Account doctype record.
 
-# 	So the report is anchored on Salary Slip. Transaction Type is now
-# 	sourced from Salary Slip.custom_transaction_type (used only as a
-# 	starting default - it's editable by hand in the report grid).
-# 	Employee bank fields are pulled straight from Employee, and the
-# 	remaining Journal Entry fields (transaction_date, cheque_no,
-# 	user_remark) are pulled via: Salary Slip.payroll_entry ->
-# 	Journal Entry Account (reference_name = payroll_entry) -> parent
-# 	Journal Entry.
-
-# 	If a payroll run has no linked/submitted Journal Entry yet, those
-# 	fields are simply left blank for that employee's row - the
-# 	employee, amount, address, and bank details are still shown.
-
 # 	Field mapping:
-# 		transaction_type            -> Salary Slip.custom_transaction_type  (derived to I/N/R/M, editable in report)
+# 		transaction_type            -> Salary Slip.custom_transaction_type  (derived to I/N/R/M, editable + saved back)
 # 		beneficiary_account_number  -> Employee.bank_ac_no
 # 		instrument_amount           -> Salary Slip.net_pay
 # 		beneficiary_name            -> Employee.employee_name
@@ -305,6 +344,7 @@
 
 # 		rows.append(
 # 			{
+# 				"salary_slip": slip.name,
 # 				"transaction_type": derive_transaction_type(slip.get("custom_transaction_type")),
 # 				"beneficiary_account_number": emp.get("bank_ac_no"),
 # 				"instrument_amount": slip.net_pay,
@@ -338,9 +378,7 @@
 # 	"""
 # 	Maps Salary Slip.custom_transaction_type to the single-letter RBI
 # 	code (I = IMPS, N = NEFT, R = RTGS, M = Mobile/UPI). Passed through
-# 	unchanged if it's already a single letter. Used only as the default
-# 	value shown in the report - the Transaction Type column is editable,
-# 	so it can be changed by hand for each row.
+# 	unchanged if it's already a single letter.
 # 	"""
 # 	if not raw_value:
 # 		return ""
@@ -359,9 +397,41 @@
 # 	}
 # 	return mapping.get(value, value[:1])
 
-# Copyright (c) 2026, Sukku and contributors
-# For license information, please see license.txt
 
+# @frappe.whitelist()
+# def update_transaction_type(salary_slip, transaction_type):
+# 	"""
+# 	Called from the report's JS (formatter's <select> onchange) the
+# 	moment a user picks a Transaction Type in the grid. Saves the picked
+# 	value directly onto Salary Slip.custom_transaction_type via a raw
+# 	db.set_value (works even though the Salary Slip is submitted, since
+# 	this is a plain field update, not a document save/workflow
+# 	transition) - same pattern as update_awb_number / update_remark in
+# 	SO vs PO Report.
+
+# 	This is what makes the manual selection persist across a report
+# 	refresh, and show correctly in the notepad download and Excel
+# 	export - both are generated fresh from this same field.
+# 	"""
+# 	if not salary_slip:
+# 		frappe.throw(_("Salary Slip is required"))
+
+# 	allowed_values = ("", "I", "N", "R", "M")
+# 	transaction_type = cstr(transaction_type).strip().upper()
+
+# 	if transaction_type not in allowed_values:
+# 		frappe.throw(_("Transaction Type must be one of I, N, R, M"))
+
+# 	if not frappe.db.exists("Salary Slip", salary_slip):
+# 		frappe.throw(_("Salary Slip {0} not found").format(salary_slip))
+
+# 	if not frappe.has_permission("Salary Slip", "write", doc=salary_slip):
+# 		frappe.throw(_("Not permitted to update this Salary Slip"), frappe.PermissionError)
+
+# 	frappe.db.set_value("Salary Slip", salary_slip, "custom_transaction_type", transaction_type)
+# 	frappe.db.commit()
+
+# 	return {"salary_slip": salary_slip, "transaction_type": transaction_type}
 
 import frappe
 from frappe import _
@@ -394,35 +464,35 @@ def get_columns():
 	field.
 	"""
 	return [
-		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 110},
-		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 110},
-		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 170},
-		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 130},
-		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 200},
-		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 80},
-		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 80},
-		{"label": _("Bene Address 1"), "fieldname": "bene_address_1", "fieldtype": "Data", "width": 130},
-		{"label": _("Bene Address 2"), "fieldname": "bene_address_2", "fieldtype": "Data", "width": 130},
-		{"label": _("Bene Address 3"), "fieldname": "bene_address_3", "fieldtype": "Data", "width": 130},
-		{"label": _("Bene Address 4"), "fieldname": "bene_address_4", "fieldtype": "Data", "width": 130},
-		{"label": _("Bene Address 5"), "fieldname": "bene_address_5", "fieldtype": "Data", "width": 130},
-		{"label": _("Instruction Reference Number"), "fieldname": "instruction_reference_number", "fieldtype": "Data", "width": 160},
-		{"label": _("Customer Reference Number"), "fieldname": "customer_reference_number", "fieldtype": "Data", "width": 160},
-		{"label": _("Payment Details 1"), "fieldname": "payment_details_1", "fieldtype": "Data", "width": 120},
-		{"label": _("Payment Details 2"), "fieldname": "payment_details_2", "fieldtype": "Data", "width": 120},
-		{"label": _("Payment Details 3"), "fieldname": "payment_details_3", "fieldtype": "Data", "width": 120},
-		{"label": _("Payment Details 4"), "fieldname": "payment_details_4", "fieldtype": "Data", "width": 120},
-		{"label": _("Payment Details 5"), "fieldname": "payment_details_5", "fieldtype": "Data", "width": 120},
-		{"label": _("Payment Details 6"), "fieldname": "payment_details_6", "fieldtype": "Data", "width": 120},
-		{"label": _("Payment Details 7"), "fieldname": "payment_details_7", "fieldtype": "Data", "width": 120},
-		{"label": _("Blank"), "fieldname": "blank_3", "fieldtype": "Data", "width": 80},
-		{"label": _("Transaction Date"), "fieldname": "transaction_date", "fieldtype": "Data", "width": 110},
-		{"label": _("Blank"), "fieldname": "blank_4", "fieldtype": "Data", "width": 80},
-		{"label": _("IFSC Code"), "fieldname": "ifsc_code", "fieldtype": "Data", "width": 110},
-		{"label": _("Bene Bank Name"), "fieldname": "bene_bank_name", "fieldtype": "Data", "width": 160},
-		{"label": _("Bene Bank Branch Name"), "fieldname": "bene_bank_branch_name", "fieldtype": "Data", "width": 160},
-		{"label": _("Beneficiary Email ID"), "fieldname": "beneficiary_email", "fieldtype": "Data", "width": 180},
-		{"label": _("Open Notepad and Copy Below Data"), "fieldname": "notepad_data", "fieldtype": "Data", "width": 450},
+		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 130},
+		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 130},
+		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 200},
+		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 150},
+		{"label": _("Beneficiary Name"), "fieldname": "beneficiary_name", "fieldtype": "Data", "width": 220},
+		{"label": _("Blank"), "fieldname": "blank_1", "fieldtype": "Data", "width": 100},
+		{"label": _("Blank"), "fieldname": "blank_2", "fieldtype": "Data", "width": 100},
+		{"label": _("Bene Address 1"), "fieldname": "bene_address_1", "fieldtype": "Data", "width": 160},
+		{"label": _("Bene Address 2"), "fieldname": "bene_address_2", "fieldtype": "Data", "width": 160},
+		{"label": _("Bene Address 3"), "fieldname": "bene_address_3", "fieldtype": "Data", "width": 150},
+		{"label": _("Bene Address 4"), "fieldname": "bene_address_4", "fieldtype": "Data", "width": 150},
+		{"label": _("Bene Address 5"), "fieldname": "bene_address_5", "fieldtype": "Data", "width": 150},
+		{"label": _("Instruction Reference Number"), "fieldname": "instruction_reference_number", "fieldtype": "Data", "width": 200},
+		{"label": _("Customer Reference Number"), "fieldname": "customer_reference_number", "fieldtype": "Data", "width": 200},
+		{"label": _("Payment Details 1"), "fieldname": "payment_details_1", "fieldtype": "Data", "width": 140},
+		{"label": _("Payment Details 2"), "fieldname": "payment_details_2", "fieldtype": "Data", "width": 140},
+		{"label": _("Payment Details 3"), "fieldname": "payment_details_3", "fieldtype": "Data", "width": 140},
+		{"label": _("Payment Details 4"), "fieldname": "payment_details_4", "fieldtype": "Data", "width": 140},
+		{"label": _("Payment Details 5"), "fieldname": "payment_details_5", "fieldtype": "Data", "width": 140},
+		{"label": _("Payment Details 6"), "fieldname": "payment_details_6", "fieldtype": "Data", "width": 140},
+		{"label": _("Payment Details 7"), "fieldname": "payment_details_7", "fieldtype": "Data", "width": 140},
+		{"label": _("Blank"), "fieldname": "blank_3", "fieldtype": "Data", "width": 100},
+		{"label": _("Transaction Date"), "fieldname": "transaction_date", "fieldtype": "Data", "width": 140},
+		{"label": _("Blank"), "fieldname": "blank_4", "fieldtype": "Data", "width": 100},
+		{"label": _("IFSC Code"), "fieldname": "ifsc_code", "fieldtype": "Data", "width": 140},
+		{"label": _("Bene Bank Name"), "fieldname": "bene_bank_name", "fieldtype": "Data", "width": 200},
+		{"label": _("Bene Bank Branch Name"), "fieldname": "bene_bank_branch_name", "fieldtype": "Data", "width": 200},
+		{"label": _("Beneficiary Email ID"), "fieldname": "beneficiary_email", "fieldtype": "Data", "width": 220},
+		{"label": _("Open Notepad and Copy Below Data"), "fieldname": "notepad_data", "fieldtype": "Data", "width": 500},
 	]
 
 

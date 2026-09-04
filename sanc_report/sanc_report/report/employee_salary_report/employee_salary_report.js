@@ -164,7 +164,7 @@ frappe.query_reports["Employee Salary Report"] = {
 
 			return `
                 <select
-                    style="width:80px; border:1px solid #d1d8dd; border-radius:4px; padding:2px 4px;"
+					style="width:100px; border:1px solid #d1d8dd; border-radius:4px; padding:2px 4px;"
                     onchange="employee_salary_update_transaction_type('${salary_slip}', this.value)">
                     ${option_html}
                 </select>
