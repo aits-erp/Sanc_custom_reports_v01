@@ -446,20 +446,17 @@ def get_columns():
 		- 1 blank right after "Payment Details 7"
 		- 1 blank right after "Transaction Date"
 
-	"Transaction Type" is now an editable Select column (I/N/R/M) so it can
-	be picked manually in the report grid. It still defaults to the value
-	auto-mapped from Payment Entry.custom_transaction_type - manual
-	selection just lets you override that default when needed.
+	"Transaction Type" is plain Data here - the manual I/N/R/M dropdown is
+	rendered client-side via the report's formatter() (same pattern used
+	in SO vs PO Report for AWB Number / Remark, and in Employee Salary
+	Report). Whatever value is picked is saved back onto the underlying
+	Payment Entry (custom_transaction_type) via the update_transaction_type
+	API below, so it survives a report refresh and shows correctly in
+	Excel export and the notepad download - all three read it from the
+	same saved field.
 	"""
 	return [
-		{
-			"label": _("Transaction Type"),
-			"fieldname": "transaction_type",
-			"fieldtype": "Select",
-			"options": "\nI\nN\nR\nM",
-			"editable": 1,
-			"width": 100,
-		},
+		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 100},
 		{"label": _("Beneficiary Code"), "fieldname": "beneficiary_code", "fieldtype": "Data", "width": 110},
 		{"label": _("Beneficiary Account Number"), "fieldname": "beneficiary_account_number", "fieldtype": "Data", "width": 170},
 		{"label": _("Instrument Amount"), "fieldname": "instrument_amount", "fieldtype": "Currency", "width": 130},
@@ -500,8 +497,9 @@ def get_data(filters):
 	# Confirmed mapping:
 	#   transaction_type              -> Payment Entry.custom_transaction_type
 	#                                     (IMPS/RTGS/NEFT/HDFC) -> I/N/R/M
-	#                                     (shown as an editable Select in the
-	#                                     grid so it can be manually overridden)
+	#                                     (shown as an editable dropdown in the
+	#                                     grid - manual picks are saved back
+	#                                     onto Payment Entry.custom_transaction_type)
 	#   beneficiary_code                -> running serial number
 	#   beneficiary_account_number      -> Bank Account.bank_account_no
 	#                                       (Bank Account found by filtering
@@ -596,6 +594,11 @@ def get_data(filters):
 
 		data.append(
 			{
+				# Hidden reference field - not in get_columns(), so it never
+				# renders as its own visible column, but the JS formatter
+				# uses it to know which Payment Entry to update when
+				# Transaction Type is changed in this row.
+				"payment_entry": row.get("payment_entry"),
 				"transaction_type": transaction_type,
 				"beneficiary_code": beneficiary_code,
 				"beneficiary_account_number": beneficiary_account_number,
@@ -671,6 +674,7 @@ def get_raw_rows(filters):
 
 		rows.append(
 			{
+				"payment_entry": pe.name,
 				"transaction_type": get_transaction_type_code(pe.custom_transaction_type),
 				"beneficiary_account_number": bank_acc_details.get("bank_account_no"),
 				"instrument_amount": pe.paid_amount,
@@ -709,8 +713,10 @@ def get_transaction_type_code(custom_transaction_type):
 		R = RTGS
 		M = IMPS
 
-	This is used only as the DEFAULT value shown in the grid - the
-	Transaction Type column is editable, so it can be manually overridden.
+	This is used as the DEFAULT value shown in the grid - the Transaction
+	Type column is manually editable (dropdown via formatter), and any
+	pick is translated back with TRANSACTION_TYPE_CODE_TO_LABEL below and
+	saved onto Payment Entry.custom_transaction_type.
 	"""
 	mapping = {
 		"HDFC": "I",
@@ -719,6 +725,18 @@ def get_transaction_type_code(custom_transaction_type):
 		"IMPS": "M",
 	}
 	return mapping.get(custom_transaction_type, "")
+
+
+# Reverse of get_transaction_type_code() - used by update_transaction_type()
+# to translate a manually picked I/N/R/M code back into the word value that
+# Payment Entry.custom_transaction_type actually stores.
+TRANSACTION_TYPE_CODE_TO_LABEL = {
+	"I": "HDFC",
+	"N": "NEFT",
+	"R": "RTGS",
+	"M": "IMPS",
+	"": "",
+}
 
 
 def get_bank_account_details(party_type, party):
@@ -864,3 +882,42 @@ def strip_pincode(address_text, pincode):
 	text = re.sub(r"\s{2,}", " ", text)
 
 	return text.strip()
+
+
+@frappe.whitelist()
+def update_transaction_type(payment_entry, transaction_type):
+	"""
+	Called from the report's JS (formatter's <select> onchange) the
+	moment a user picks a Transaction Type in the grid. Translates the
+	picked I/N/R/M code back into the word value Payment Entry actually
+	stores (HDFC/NEFT/RTGS/IMPS) and saves it directly onto
+	Payment Entry.custom_transaction_type via a raw db.set_value (works
+	even though the Payment Entry is submitted, since this is a plain
+	field update, not a document save/workflow transition) - same
+	pattern as update_awb_number / update_remark in SO vs PO Report, and
+	update_transaction_type in Employee Salary Report.
+
+	This is what makes the manual selection persist across a report
+	refresh, and show correctly in the notepad download and Excel
+	export - both are generated fresh from this same field.
+	"""
+	if not payment_entry:
+		frappe.throw(_("Payment Entry is required"))
+
+	transaction_type = cstr(transaction_type).strip().upper()
+
+	if transaction_type not in TRANSACTION_TYPE_CODE_TO_LABEL:
+		frappe.throw(_("Transaction Type must be one of I, N, R, M"))
+
+	if not frappe.db.exists("Payment Entry", payment_entry):
+		frappe.throw(_("Payment Entry {0} not found").format(payment_entry))
+
+	if not frappe.has_permission("Payment Entry", "write", doc=payment_entry):
+		frappe.throw(_("Not permitted to update this Payment Entry"), frappe.PermissionError)
+
+	stored_value = TRANSACTION_TYPE_CODE_TO_LABEL.get(transaction_type, "")
+
+	frappe.db.set_value("Payment Entry", payment_entry, "custom_transaction_type", stored_value)
+	frappe.db.commit()
+
+	return {"payment_entry": payment_entry, "transaction_type": transaction_type}
