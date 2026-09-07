@@ -183,9 +183,16 @@ frappe.query_reports["Vendor Report"] = {
 				})
 				.join("");
 
+			// NOTE: width is 100% + box-sizing:border-box (not a fixed px
+			// value) so the dropdown always exactly fills whatever width
+			// the DataTable actually renders for this column - fixed px
+			// values caused the header/filter row and the dropdown to go
+			// out of sync (the "merging/overlap" look), since Frappe's
+			// DataTable can render a column wider or narrower than the
+			// number you pass into get_columns().
 			return `
                 <select
-                    style="width:100px; border:1px solid #d1d8dd; border-radius:4px; padding:2px 4px;"
+                    style="width:100%; box-sizing:border-box; border:1px solid #d1d8dd; border-radius:4px; padding:2px 4px;"
                     onchange="vendor_report_update_transaction_type('${payment_entry}', this.value)">
                     ${option_html}
                 </select>
