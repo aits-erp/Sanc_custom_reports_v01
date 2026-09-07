@@ -1,4 +1,3 @@
-```python
 # Copyright (c) 2026, Sanc and contributors
 # For license information, please see license.txt
 
@@ -727,4 +726,4 @@ def strip_pincode(address_text, pincode):
 	)
 
 	return text.strip()
-```
+
