@@ -21,66 +21,127 @@
 // 	],
 
 // 	onload: function (report) {
-// 		// Button to export the last column ("Open Notepad and Copy Below Data")
-// 		// as a plain .txt file, one row per line - ready to paste into Notepad
-// 		// or upload to the RBI adapter.
-// 		report.page.add_inner_button(__("Download Notepad Data"), function () {
-// 			// Pull the CURRENT grid data (not a stale snapshot), so that any
-// 			// manual Transaction Type edit made in the editable dropdown is
-// 			// picked up.
-// 			let data = frappe.query_report.data;
 
-// 			if (!data || !data.length) {
-// 				frappe.msgprint(__("No data to download. Please run the report first."));
-// 				return;
+// 		report.page.add_inner_button(
+// 			__("Download Notepad Data"),
+// 			function () {
+
+// 				// Pull CURRENT grid data so that if the user
+// 				// manually changes Transaction Type, that
+// 				// changed value is used in the download.
+
+// 				let data = frappe.query_report.data;
+
+// 				if (!data || !data.length) {
+
+// 					frappe.msgprint(
+// 						__(
+// 							"No data to download. Please run the report first."
+// 						)
+// 					);
+
+// 					return;
+// 				}
+
+// 				let lines = data
+// 					.map((row) => {
+
+// 						let notepad_line =
+// 							row["notepad_data"];
+
+// 						if (
+// 							notepad_line === undefined ||
+// 							notepad_line === null ||
+// 							notepad_line === ""
+// 						) {
+// 							return null;
+// 						}
+
+// 						// Transaction Type comes from:
+// 						//
+// 						// Salary Slip.custom_transaction_type
+// 						//
+// 						// Backend mapping:
+// 						//
+// 						// IMPS   -> I
+// 						// NEFT   -> N
+// 						// RTGS   -> R
+// 						// UPI    -> M
+// 						// MOBILE -> M
+
+// 						let parts =
+// 							notepad_line.split(",");
+
+// 						let current_transaction_type =
+// 							row["transaction_type"];
+
+// 						// Replace the first RBI field with
+// 						// the current Transaction Type value.
+
+// 						if (
+// 							current_transaction_type !== undefined &&
+// 							current_transaction_type !== null
+// 						) {
+// 							parts[0] =
+// 								current_transaction_type;
+// 						}
+
+// 						return parts.join(",");
+// 					})
+// 					.filter(
+// 						(line) =>
+// 							line !== null &&
+// 							line !== ""
+// 					);
+
+// 				if (!lines.length) {
+
+// 					frappe.msgprint(
+// 						__(
+// 							"Notepad data column is empty."
+// 						)
+// 					);
+
+// 					return;
+// 				}
+
+// 				let content =
+// 					lines.join("\n");
+
+// 				let blob =
+// 					new Blob(
+// 						[content],
+// 						{
+// 							type: "text/plain"
+// 						}
+// 					);
+
+// 				let link =
+// 					document.createElement("a");
+
+// 				link.href =
+// 					window.URL.createObjectURL(
+// 						blob
+// 					);
+
+// 				link.download =
+// 					"RBI_Adapter_" +
+// 					frappe.datetime.now_date() +
+// 					".txt";
+
+// 				document.body.appendChild(
+// 					link
+// 				);
+
+// 				link.click();
+
+// 				document.body.removeChild(
+// 					link
+// 				);
 // 			}
-
-// 			let lines = data
-// 				.map((row) => {
-// 					let notepad_line = row["notepad_data"];
-
-// 					if (notepad_line === undefined || notepad_line === null || notepad_line === "") {
-// 						return null;
-// 					}
-
-// 					// notepad_data is built once on the server with whatever
-// 					// Transaction Type was there at report-run time. If the
-// 					// user has since picked a different value (I/N/R/M) in
-// 					// the editable Transaction Type column, that live value
-// 					// lives in row["transaction_type"] - so we splice it into
-// 					// the first comma-separated field of the notepad line
-// 					// here, right before download.
-// 					let parts = notepad_line.split(",");
-// 					let current_transaction_type = row["transaction_type"];
-
-// 					if (current_transaction_type !== undefined && current_transaction_type !== null) {
-// 						parts[0] = current_transaction_type;
-// 					}
-
-// 					return parts.join(",");
-// 				})
-// 				.filter((line) => line !== null && line !== "");
-
-// 			if (!lines.length) {
-// 				frappe.msgprint(__("Notepad data column is empty."));
-// 				return;
-// 			}
-
-// 			let content = lines.join("\n");
-// 			let blob = new Blob([content], { type: "text/plain" });
-// 			let link = document.createElement("a");
-
-// 			link.href = window.URL.createObjectURL(blob);
-// 			link.download = "RBI_Adapter_" + frappe.datetime.now_date() + ".txt";
-// 			document.body.appendChild(link);
-// 			link.click();
-// 			document.body.removeChild(link);
-// 		});
+// 		);
 // 	}
 // };
-
-
-
 
 
 // Copyright (c) 2026, Sukku and contributors
@@ -104,17 +165,96 @@ frappe.query_reports["Employee Salary Report"] = {
 		}
 	],
 
+	// ------------------------------------------------------------
+	// ONLY Transaction Type column is editable.
+	//
+	// It is a normal text input because Salary Slip
+	// custom_transaction_type is a Data field.
+	// ------------------------------------------------------------
+
+	get_datatable_options: function (datatable_options) {
+
+		datatable_options.getEditor = function (
+			colIndex,
+			rowIndex,
+			value,
+			parent,
+			column,
+			row,
+			data
+		) {
+
+			// Only Transaction Type should be editable.
+			if (column.id !== "transaction_type") {
+				return false;
+			}
+
+			// Create normal text input.
+			let input =
+				document.createElement("input");
+
+			input.type = "text";
+
+			input.className =
+				"form-control";
+
+			input.style.width =
+				"100%";
+
+			input.style.height =
+				"100%";
+
+			input.style.boxSizing =
+				"border-box";
+
+			input.style.padding =
+				"4px 8px";
+
+			parent.appendChild(input);
+
+			return {
+
+				// When user opens the cell.
+				initValue: function (value) {
+
+					input.value =
+						value || "";
+
+					input.focus();
+
+					input.select();
+				},
+
+				// When DataTable sets a value.
+				setValue: function (value) {
+
+					input.value =
+						value || "";
+				},
+
+				// Value entered by user.
+				getValue: function () {
+
+					return input.value;
+				}
+			};
+		};
+
+		return datatable_options;
+	},
+
 	onload: function (report) {
+
+		// ------------------------------------------------------------
+		// DOWNLOAD NOTEPAD DATA
+		// ------------------------------------------------------------
 
 		report.page.add_inner_button(
 			__("Download Notepad Data"),
 			function () {
 
-				// Pull CURRENT grid data so that if the user
-				// manually changes Transaction Type, that
-				// changed value is used in the download.
-
-				let data = frappe.query_report.data;
+				let data =
+					frappe.query_report.data;
 
 				if (!data || !data.length) {
 
@@ -128,7 +268,7 @@ frappe.query_reports["Employee Salary Report"] = {
 				}
 
 				let lines = data
-					.map((row) => {
+					.map(function (row) {
 
 						let notepad_line =
 							row["notepad_data"];
@@ -141,42 +281,37 @@ frappe.query_reports["Employee Salary Report"] = {
 							return null;
 						}
 
-						// Transaction Type comes from:
+						// ------------------------------------------------
+						// Get CURRENT Transaction Type value.
 						//
-						// Salary Slip.custom_transaction_type
-						//
-						// Backend mapping:
-						//
-						// IMPS   -> I
-						// NEFT   -> N
-						// RTGS   -> R
-						// UPI    -> M
-						// MOBILE -> M
-
-						let parts =
-							notepad_line.split(",");
+						// If client edited the report cell,
+						// the edited value is used here.
+						// ------------------------------------------------
 
 						let current_transaction_type =
 							row["transaction_type"];
 
-						// Replace the first RBI field with
-						// the current Transaction Type value.
+						let parts =
+							notepad_line.split(",");
 
 						if (
 							current_transaction_type !== undefined &&
 							current_transaction_type !== null
 						) {
+
 							parts[0] =
 								current_transaction_type;
 						}
 
 						return parts.join(",");
 					})
-					.filter(
-						(line) =>
+					.filter(function (line) {
+
+						return (
 							line !== null &&
 							line !== ""
-					);
+						);
+					});
 
 				if (!lines.length) {
 
@@ -226,4 +361,3 @@ frappe.query_reports["Employee Salary Report"] = {
 		);
 	}
 };
-
