@@ -433,6 +433,7 @@
 
 # 	return {"salary_slip": salary_slip, "transaction_type": transaction_type}
 
+
 import frappe
 from frappe import _
 from frappe.utils import cstr, formatdate
@@ -454,10 +455,10 @@ def get_columns():
 		- 1 blank right after Payment Details 7
 		- 1 blank right after Transaction Date
 
-	Transaction Type is plain Data here - the manual I/N/R/M dropdown is
-	rendered client-side via the report's formatter() (same pattern as
-	the AWB Number / Remark columns in SO vs PO Report). Whatever value
-	is picked is saved back onto the underlying Salary Slip
+	Transaction Type is plain Data here - it's now a free-text editable
+	field rendered client-side via the report's formatter() (same pattern
+	as the AWB Number / Remark columns in SO vs PO Report). Whatever
+	value is typed is saved back onto the underlying Salary Slip
 	(custom_transaction_type) via the update_transaction_type API below,
 	so it survives a report refresh and shows correctly in Excel export
 	and the notepad download - all three read it from the same saved
@@ -790,15 +791,19 @@ def derive_transaction_type(raw_value):
 @frappe.whitelist()
 def update_transaction_type(salary_slip, transaction_type):
 	"""
-	Called from the report's JS (formatter's <select> onchange) the
-	moment a user picks a Transaction Type in the grid. Saves the picked
-	value directly onto Salary Slip.custom_transaction_type via a raw
-	db.set_value (works even though the Salary Slip is submitted, since
-	this is a plain field update, not a document save/workflow
+	Called from the report's JS (formatter's text field onchange) the
+	moment a user types a Transaction Type value in the grid. Saves the
+	typed value directly onto Salary Slip.custom_transaction_type via a
+	raw db.set_value (works even though the Salary Slip is submitted,
+	since this is a plain field update, not a document save/workflow
 	transition) - same pattern as update_awb_number / update_remark in
 	SO vs PO Report.
 
-	This is what makes the manual selection persist across a report
+	Still validated server-side to only allow I / N / R / M (or blank),
+	even though the field is now free text on the client - this prevents
+	garbage values from ever reaching the Salary Slip doctype.
+
+	This is what makes the manually typed value persist across a report
 	refresh, and show correctly in the notepad download and Excel
 	export - both are generated fresh from this same field.
 	"""

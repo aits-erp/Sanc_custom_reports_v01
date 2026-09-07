@@ -1,8 +1,3 @@
-
-
-// // Copyright (c) 2026, Sanc and contributors
-// // For license information, please see license.txt
-
 // frappe.query_reports["Vendor Report"] = {
 // 	"filters": [
 // 		{
@@ -105,12 +100,13 @@ frappe.query_reports["Vendor Report"] = {
 		// as a plain .txt file, one row per line - ready to paste into Notepad
 		// or upload to the RBI adapter.
 		//
-		// Transaction Type is now a dropdown rendered via formatter() below,
-		// and every pick is saved straight to Payment Entry.custom_transaction_type
-		// via update_transaction_type() - so row["transaction_type"] here is
+		// Transaction Type is a free-text editable field (same pattern as
+		// AWB Number / Remark in SO vs PO Report), and every typed value is
+		// saved straight to Payment Entry.custom_transaction_type via
+		// update_transaction_type() - so row["transaction_type"] here is
 		// already the current, persisted value. We still swap it into the
 		// first field of notepad_data as a safety net, in case a value was
-		// just picked and not yet re-fetched from a fresh report run.
+		// just typed and not yet re-fetched from a fresh report run.
 		report.page.add_inner_button(__("Download Notepad Data"), function () {
 			let data = frappe.query_report.data;
 
@@ -164,38 +160,26 @@ frappe.query_reports["Vendor Report"] = {
 
 		value = default_formatter(value, row, column, data);
 
-		// ✅ EDITABLE TRANSACTION TYPE DROPDOWN
+		// ✅ EDITABLE TRANSACTION TYPE FIELD (free text, same pattern as
+		// AWB Number / Remark in SO vs PO Report - no dropdown, user types
+		// the value directly. Still expected to be I / N / R / M, and is
+		// validated + saved server-side onto Payment Entry.custom_transaction_type
+		// in update_transaction_type() below.)
 		if (column.fieldname === "transaction_type") {
 
-			let val = data.transaction_type || "";
+			let val = (data.transaction_type || "").replace(/"/g, "&quot;");
 			let payment_entry = data.payment_entry || "";
 
 			if (!payment_entry) {
 				return `<span>${val}</span>`;
 			}
 
-			let options = ["", "I", "N", "R", "M"];
-			let option_html = options
-				.map((opt) => {
-					let selected = opt === val ? "selected" : "";
-					let label = opt || "-";
-					return `<option value="${opt}" ${selected}>${label}</option>`;
-				})
-				.join("");
-
-			// NOTE: width is 100% + box-sizing:border-box (not a fixed px
-			// value) so the dropdown always exactly fills whatever width
-			// the DataTable actually renders for this column - fixed px
-			// values caused the header/filter row and the dropdown to go
-			// out of sync (the "merging/overlap" look), since Frappe's
-			// DataTable can render a column wider or narrower than the
-			// number you pass into get_columns().
 			return `
-                <select
-                    style="width:100%; box-sizing:border-box; border:1px solid #d1d8dd; border-radius:4px; padding:2px 4px;"
+                <input type="text" value="${val}"
+                    maxlength="1"
+                    style="width:100%; box-sizing:border-box; border:1px solid #d1d8dd; border-radius:4px; padding:2px 6px; text-transform:uppercase;"
+                    placeholder="I/N/R/M"
                     onchange="vendor_report_update_transaction_type('${payment_entry}', this.value)">
-                    ${option_html}
-                </select>
             `;
 		}
 
@@ -241,6 +225,9 @@ window.vendor_report_update_transaction_type = function (payment_entry, value) {
 		},
 		error: function () {
 			frappe.msgprint(__("Failed to save Transaction Type. Please try again."));
+			// Reload the report so the field snaps back to the last saved
+			// value rather than showing an invalid typed value.
+			frappe.query_report.refresh();
 		}
 	});
 };

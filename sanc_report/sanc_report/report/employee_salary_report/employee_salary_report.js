@@ -217,7 +217,6 @@
 // 	});
 // };
 
-
 // Copyright (c) 2026, Sukku and contributors
 // For license information, please see license.txt
 
@@ -243,6 +242,14 @@ frappe.query_reports["Employee Salary Report"] = {
 		// Button to export the last column ("Open Notepad and Copy Below Data")
 		// as a plain .txt file, one row per line - ready to paste into Notepad
 		// or upload to the RBI adapter.
+		//
+		// Transaction Type is a free-text editable field (same pattern as
+		// AWB Number / Remark in SO vs PO Report), and every typed value is
+		// saved straight to Salary Slip.custom_transaction_type via
+		// update_transaction_type() - so row["transaction_type"] here is
+		// already the current, persisted value. We still swap it into the
+		// first field of notepad_data as a safety net, in case a value was
+		// just typed and not yet re-fetched from a fresh report run.
 		report.page.add_inner_button(__("Download Notepad Data"), function () {
 			let data = frappe.query_report.data;
 
@@ -252,7 +259,24 @@ frappe.query_reports["Employee Salary Report"] = {
 			}
 
 			let lines = data
-				.map((row) => row["notepad_data"])
+				.map((row) => {
+					let line = row["notepad_data"];
+
+					if (line === undefined || line === null || line === "") {
+						return null;
+					}
+
+					// Use the current (possibly manually edited) Transaction
+					// Type value from the grid as the first field of the line.
+					let currentType = row["transaction_type"];
+					if (currentType !== undefined && currentType !== null && currentType !== "") {
+						let parts = line.split(",");
+						parts[0] = currentType;
+						line = parts.join(",");
+					}
+
+					return line;
+				})
 				.filter((line) => line !== undefined && line !== null && line !== "");
 
 			if (!lines.length) {
@@ -279,38 +303,26 @@ frappe.query_reports["Employee Salary Report"] = {
 
 		value = default_formatter(value, row, column, data);
 
-		// ✅ EDITABLE TRANSACTION TYPE DROPDOWN
+		// ✅ EDITABLE TRANSACTION TYPE FIELD (free text, same pattern as
+		// AWB Number / Remark in SO vs PO Report - no dropdown, user types
+		// the value directly. Still expected to be I / N / R / M, and is
+		// validated + saved server-side onto Salary Slip.custom_transaction_type
+		// in update_transaction_type() below.)
 		if (column.fieldname === "transaction_type") {
 
-			let val = data.transaction_type || "";
+			let val = (data.transaction_type || "").replace(/"/g, "&quot;");
 			let salary_slip = data.salary_slip || "";
 
 			if (!salary_slip) {
 				return `<span>${val}</span>`;
 			}
 
-			let options = ["", "I", "N", "R", "M"];
-			let option_html = options
-				.map((opt) => {
-					let selected = opt === val ? "selected" : "";
-					let label = opt || "-";
-					return `<option value="${opt}" ${selected}>${label}</option>`;
-				})
-				.join("");
-
-			// NOTE: width is 100% + box-sizing:border-box (not a fixed px
-			// value) so the dropdown always exactly fills whatever width
-			// the DataTable actually renders for this column - fixed px
-			// values caused the header/filter row and the dropdown to go
-			// out of sync (the "merging/overlap" look), since Frappe's
-			// DataTable can render a column wider or narrower than the
-			// number you pass into get_columns().
 			return `
-                <select
-					style="width:100%; box-sizing:border-box; border:1px solid #d1d8dd; border-radius:4px; padding:2px 4px;"
+                <input type="text" value="${val}"
+                    maxlength="1"
+                    style="width:100%; box-sizing:border-box; border:1px solid #d1d8dd; border-radius:4px; padding:2px 6px; text-transform:uppercase;"
+                    placeholder="I/N/R/M"
                     onchange="employee_salary_update_transaction_type('${salary_slip}', this.value)">
-                    ${option_html}
-                </select>
             `;
 		}
 
@@ -356,6 +368,9 @@ window.employee_salary_update_transaction_type = function (salary_slip, value) {
 		},
 		error: function () {
 			frappe.msgprint(__("Failed to save Transaction Type. Please try again."));
+			// Reload the report so the field snaps back to the last saved
+			// value rather than showing an invalid typed value.
+			frappe.query_report.refresh();
 		}
 	});
 };

@@ -922,6 +922,7 @@
 
 # 	return {"payment_entry": payment_entry, "transaction_type": transaction_type}
 
+
 # Copyright (c) 2026, Sanc and contributors
 # For license information, please see license.txt
 
@@ -950,14 +951,14 @@ def get_columns():
 		- 1 blank right after "Payment Details 7"
 		- 1 blank right after "Transaction Date"
 
-	"Transaction Type" is plain Data here - the manual I/N/R/M dropdown is
-	rendered client-side via the report's formatter() (same pattern used
-	in SO vs PO Report for AWB Number / Remark, and in Employee Salary
-	Report). Whatever value is picked is saved back onto the underlying
-	Payment Entry (custom_transaction_type) via the update_transaction_type
-	API below, so it survives a report refresh and shows correctly in
-	Excel export and the notepad download - all three read it from the
-	same saved field.
+	"Transaction Type" is plain Data here - it's now a free-text editable
+	field rendered client-side via the report's formatter() (same pattern
+	used in SO vs PO Report for AWB Number / Remark). Whatever value is
+	typed is saved back onto the underlying Payment Entry
+	(custom_transaction_type) via the update_transaction_type API below,
+	so it survives a report refresh and shows correctly in Excel export
+	and the notepad download - all three read it from the same saved
+	field.
 	"""
 	return [
 		{"label": _("Transaction Type"), "fieldname": "transaction_type", "fieldtype": "Data", "width": 130},
@@ -1001,9 +1002,9 @@ def get_data(filters):
 	# Confirmed mapping:
 	#   transaction_type              -> Payment Entry.custom_transaction_type
 	#                                     (IMPS/RTGS/NEFT/HDFC) -> I/N/R/M
-	#                                     (shown as an editable dropdown in the
-	#                                     grid - manual picks are saved back
-	#                                     onto Payment Entry.custom_transaction_type)
+	#                                     (shown as a free-text editable field
+	#                                     in the grid - typed values are saved
+	#                                     back onto Payment Entry.custom_transaction_type)
 	#   beneficiary_code                -> running serial number
 	#   beneficiary_account_number      -> Bank Account.bank_account_no
 	#                                       (Bank Account found by filtering
@@ -1218,9 +1219,10 @@ def get_transaction_type_code(custom_transaction_type):
 		M = IMPS
 
 	This is used as the DEFAULT value shown in the grid - the Transaction
-	Type column is manually editable (dropdown via formatter), and any
-	pick is translated back with TRANSACTION_TYPE_CODE_TO_LABEL below and
-	saved onto Payment Entry.custom_transaction_type.
+	Type column is now a free-text editable field (typed, not selected),
+	and any typed value is translated back with
+	TRANSACTION_TYPE_CODE_TO_LABEL below and saved onto
+	Payment Entry.custom_transaction_type.
 	"""
 	mapping = {
 		"HDFC": "I",
@@ -1232,7 +1234,7 @@ def get_transaction_type_code(custom_transaction_type):
 
 
 # Reverse of get_transaction_type_code() - used by update_transaction_type()
-# to translate a manually picked I/N/R/M code back into the word value that
+# to translate a manually typed I/N/R/M code back into the word value that
 # Payment Entry.custom_transaction_type actually stores.
 TRANSACTION_TYPE_CODE_TO_LABEL = {
 	"I": "HDFC",
@@ -1391,9 +1393,9 @@ def strip_pincode(address_text, pincode):
 @frappe.whitelist()
 def update_transaction_type(payment_entry, transaction_type):
 	"""
-	Called from the report's JS (formatter's <select> onchange) the
-	moment a user picks a Transaction Type in the grid. Translates the
-	picked I/N/R/M code back into the word value Payment Entry actually
+	Called from the report's JS (formatter's text field onchange) the
+	moment a user types a Transaction Type value in the grid. Translates
+	the typed I/N/R/M code back into the word value Payment Entry actually
 	stores (HDFC/NEFT/RTGS/IMPS) and saves it directly onto
 	Payment Entry.custom_transaction_type via a raw db.set_value (works
 	even though the Payment Entry is submitted, since this is a plain
@@ -1401,7 +1403,11 @@ def update_transaction_type(payment_entry, transaction_type):
 	pattern as update_awb_number / update_remark in SO vs PO Report, and
 	update_transaction_type in Employee Salary Report.
 
-	This is what makes the manual selection persist across a report
+	Still validated server-side to only allow I / N / R / M (or blank),
+	even though the field is now free text on the client - this prevents
+	garbage values from ever reaching the Payment Entry doctype.
+
+	This is what makes the manually typed value persist across a report
 	refresh, and show correctly in the notepad download and Excel
 	export - both are generated fresh from this same field.
 	"""
