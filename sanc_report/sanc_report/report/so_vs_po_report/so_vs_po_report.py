@@ -464,23 +464,15 @@ def get_data(filters):
         INNER JOIN `tabSales Order Item` soi
             ON soi.parent = so.name
 
-        -- ── PO HEADER — latest submitted PO/amendment ──
-        LEFT JOIN `tabPurchase Order` po
-            ON po.docstatus = 1
-
-            -- Only use the latest submitted PO in the amendment chain
-            AND NOT EXISTS (
-                SELECT 1
-                FROM `tabPurchase Order` po_next
-                WHERE po_next.amended_from = po.name
-                  AND po_next.docstatus = 1
-            )
-
-        -- ── PO item matched by latest PO + SO name + SO item ──
+        -- ── PO item matched by SO name + SO item ──
         LEFT JOIN `tabPurchase Order Item` poi
-             ON poi.parent            = po.name
-            AND poi.sales_order       = so.name
-            AND poi.sales_order_item  = soi.name
+             ON poi.sales_order      = so.name
+            AND poi.sales_order_item = soi.name
+
+        -- ── PO header — only submitted ──
+        LEFT JOIN `tabPurchase Order` po
+            ON po.name      = poi.parent
+           AND po.docstatus = 1
 
         LEFT JOIN `tabSupplier` sup
             ON sup.name = po.supplier
