@@ -1,5 +1,4 @@
 
-import frappe
 def execute(filters=None):
     columns = get_columns()
     data = get_data(filters)
@@ -74,7 +73,6 @@ def get_columns():
         {"label": "Customer PO Number",  "fieldname": "po_no",                  "fieldtype": "Data",     "width": 150},
         {"label": "SO Category",         "fieldname": "order_type",             "fieldtype": "Data",     "width": 140},
         {"label": "Sales Order",         "fieldname": "so",                     "fieldtype": "Link",     "options": "Sales Order",  "width": 150},
-        {"label": "Sales Person",        "fieldname": "sales_person",           "fieldtype": "Data",     "width": 150},
         {"label": "Customer Name",       "fieldname": "customer_name",          "fieldtype": "Data",     "width": 180},
         {"label": "Certificate",         "fieldname": "custom_certificate",     "fieldtype": "Select",   "options": "\nTC\nCC\nTC/CC", "width": 120},
         {"label": "Part Number",         "fieldname": "item_code",              "fieldtype": "Link",     "options": "Item",         "width": 120},
@@ -116,10 +114,8 @@ def get_conditions(filters):
 
     if filters.get("status") and len(filters.get("status")) > 0:
         conditions += " AND so.status IN %(status)s"
-
     if filters.get("purchase_order") and len(filters.get("purchase_order")) > 0:
         conditions += " AND po.name IN %(purchase_order)s"
-
     return conditions
 
 
@@ -136,48 +132,39 @@ def get_data(filters):
 
     data = frappe.db.sql("""
         SELECT
-            so.transaction_date                                             AS date,
+            so.transaction_date                                         AS date,
             so.po_no,
             so.order_type,
-            so.name                                                         AS so,
-
-            -- ✅ Correlated subquery — fetches sales persons without JOIN row multiplication
-            (
-                SELECT GROUP_CONCAT(DISTINCT st.sales_person ORDER BY st.idx SEPARATOR ', ')
-                FROM `tabSales Team` st
-                WHERE st.parent     = so.name
-                  AND st.parenttype = 'Sales Order'
-            )                                                               AS sales_person,
-
+            so.name                                                     AS so,
             so.customer_name,
             so.custom_certificate,
 
             soi.item_code,
             soi.qty,
             soi.rate,
-            soi.base_amount                                                 AS amount,
+            soi.base_amount                                             AS amount,
             soi.custom_edd,
 
-            IFNULL(soi.delivered_qty, 0)                                    AS qty_billed,
+            IFNULL(soi.delivered_qty, 0) AS qty_billed,
 
-            (soi.qty - IFNULL(soi.delivered_qty, 0))                        AS qty_pending,
+            (soi.qty - IFNULL(soi.delivered_qty, 0)) AS qty_pending,
 
-            (soi.billed_amt * IFNULL(so.conversion_rate, 1))                AS amount_billed,
+            (soi.billed_amt * IFNULL(so.conversion_rate, 1)) AS amount_billed,
 
             (soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) AS amount_pending,
 
-            sup.name                                                        AS supplier,
+            sup.name                                                    AS supplier,
             sup.supplier_name,
-            po.name                                                         AS po,
-            po.transaction_date                                             AS po_date,
+            po.name                                                     AS po,
+            po.transaction_date                                         AS po_date,
 
-            poi.item_code                                                   AS po_item,
-            poi.qty                                                         AS po_qty,
+            poi.item_code                                               AS po_item,
+            poi.qty                                                     AS po_qty,
             poi.expected_delivery_date,
-            poi.custom_good_in_transit                                      AS in_transit,
-            poi.custom_awbmawb_number                                       AS awb_number,
+            poi.custom_good_in_transit                                  AS in_transit,
+            poi.custom_awbmawb_number                                   AS awb_number,
             poi.custom_remark,
-            poi.name                                                        AS poi_name
+            poi.name                                                    AS poi_name
 
         FROM `tabSales Order` so
 
@@ -185,38 +172,30 @@ def get_data(filters):
         INNER JOIN `tabSales Order Item` soi
             ON soi.parent = so.name
 
-        # -- ── PO item matched by SO name + SO item ──
-        # LEFT JOIN `tabPurchase Order Item` poi
-        #      ON poi.sales_order      = so.name
-        #     AND poi.sales_order_item = soi.name
-
-                -- ── PO item matched by SO name + SO item (normal + amended) ──
+        -- ── PO item matched by SO name + item code ──
         LEFT JOIN `tabPurchase Order Item` poi
-            ON poi.sales_order = so.name
-            AND (
-                poi.sales_order_item = soi.name
-                OR (
-                    (poi.sales_order_item IS NULL OR poi.sales_order_item = '')
-                    AND poi.item_code = soi.item_code
-                )
-            )
+             ON poi.sales_order = so.name
+            AND poi.sales_order_item = soi.name
 
         -- ── PO header — only submitted ──
         LEFT JOIN `tabPurchase Order` po
             ON po.name      = poi.parent
-           AND po.docstatus = 1
+            AND po.docstatus = 1
 
         LEFT JOIN `tabSupplier` sup
             ON sup.name = po.supplier
 
-        WHERE
-            so.docstatus = 1
-            AND so.status NOT IN ('Cancelled', 'Closed', 'Completed')
-            {conditions}
+        -- ── SI items joined on so_detail (soi.name) — same as standard report ──
+        -- This avoids double-counting when multiple invoice lines exist
+        
+       WHERE
+    so.docstatus = 1
+    AND so.status NOT IN ('Cancelled', 'Closed','Completed')
+    {conditions}
 
-        GROUP BY soi.name
+GROUP BY soi.name
 
-        ORDER BY so.transaction_date DESC, so.name, soi.idx
+ORDER BY so.transaction_date DESC, so.name, soi.idx
 
     """.format(conditions=conditions), filters, as_dict=1)
 
@@ -229,7 +208,6 @@ def get_totals_row(data):
         "po_no":                  None,
         "order_type":             None,
         "so":                     None,
-        "sales_person":           None,
         "customer_name":          "Total",
         "custom_certificate":     None,
         "item_code":              None,
